@@ -1,7 +1,6 @@
 # OpenGL
 
 Various graphic effects implemented in OpenGL.
-Requires C++17 compiler.
 
 ![](https://s6.ifotos.pl/img/Beztytulu_qapprpw.png)
 
@@ -24,14 +23,19 @@ Requires C++17 compiler.
 
 #### Eye adaptation
 - log-average
-- based on pure diffuse light generated on main pass (MRT)
+- based on pure (without affecting surface) diffuse light generated on main pass (MRT)
 - no lag
 
 #### Other
 - forward rendering
 - separate passes for alpha masked geometry
+- lightning model: Blinn-Phong
 
-##### Debug stuff
+# Build Instructions
+The repository contains Visual Studio 2017 project and solution file and all external dependencies.
+Requires C++17 compiler and OpenGL 4.5.
+
+##### Controls
 Press
 "4" and "6" on numpad to move the sun
 "N" to toggle normal mapping
@@ -40,6 +44,7 @@ Press
 "Q" and "E" to change exposure.
 "R" and "T" to decrease/increase bias (constant value added to normalized depth)
 "Y" and "U" to decrease/increase scale of normal offset bias
+Scroll mouse wheel to change FOV.
 
 ##### Sponza scene
 From https://github.com/SaschaWillems/VulkanSponza
