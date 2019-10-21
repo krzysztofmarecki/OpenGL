@@ -31,20 +31,22 @@ Various graphic effects implemented in OpenGL.
 - separate passes for alpha masked geometry
 - lightning model: Blinn-Phong
 
-# Build Instructions
-The repository contains Visual Studio 2017 project and solution file and all external dependencies.
+## Build Instructions
+The repository contains Visual Studio 2017 project and solution file and all external dependencies.  
 Requires C++17 compiler and OpenGL 4.5.
 
 ##### Controls
 Press
-"4" and "6" on numpad to move the sun
-"N" to toggle normal mapping
-"G" to show shadow maps (white - if nothing was rendered at pixel, black otherwise)
-"H" to switch between visualized shadow maps
-"Q" and "E" to change exposure.
-"R" and "T" to decrease/increase bias (constant value added to normalized depth)
-"Y" and "U" to decrease/increase scale of normal offset bias
+"4" and "6" on numpad to move the sun  
+"N" to toggle normal mapping  
+"G" to show shadow maps (white - if nothing was rendered at pixel, black otherwise)  
+"H" to switch between visualized shadow maps  
+"Q" and "E" to change exposure.  
+"R" and "T" to decrease/increase bias (constant value added to normalized depth)  
+"Y" and "U" to decrease/increase scale of normal offset bias  
+
 Scroll mouse wheel to change FOV.
+
 
 ##### Sponza scene
 From https://github.com/SaschaWillems/VulkanSponza
