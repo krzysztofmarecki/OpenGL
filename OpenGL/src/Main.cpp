@@ -12,7 +12,7 @@
 #include "Model.h"						// Model
 
 #include <array>						// std::array
-
+#include <random>						// std::random_device, std::mt19937, std::uniform_real_distribution
 
 // settings
 const U32 g_kWScreen = 1280;
@@ -43,7 +43,8 @@ Bool	g_debug = false;
 I32		g_debugCascadeIdx = 0;
 
 Vec3	g_posSun(217, 265, -80);
-
+F32		g_SizeFilter = 9;
+I32		g_numDiscSamples = 9;
 I32 main()
 {
 	// glfw: initialize and configure
@@ -136,6 +137,24 @@ I32 main()
 		return aVsFarCascade;
 	}(aVsLimitsCascade);
 	
+	// Generate random float rotation texture
+	const I32 kSizeRandomAngle = 16;
+	const std::vector<F32> aRadRandomAngles = [](const I32 size) {
+		std::random_device rd;
+		std::mt19937 gen(rd());
+		std::uniform_real_distribution<F32> dis(0, 2 * 3.14159265358979323846f);
+
+		std::vector<F32> aRadRandomAngles;
+		aRadRandomAngles.reserve(size);
+		for (I32 i = 0; i < size; i++)
+			aRadRandomAngles.push_back(dis(gen));
+		return aRadRandomAngles;
+	}(kSizeRandomAngle * kSizeRandomAngle * kSizeRandomAngle);
+	GLU bufRandomAngles;
+	glCreateTextures(GL_TEXTURE_3D, 1, &bufRandomAngles);
+	glTextureStorage3D(bufRandomAngles, 1, GL_R16F, kSizeRandomAngle, kSizeRandomAngle, kSizeRandomAngle);
+	glTextureSubImage3D(bufRandomAngles, 0, 0, 0, 0, kSizeRandomAngle, kSizeRandomAngle, kSizeRandomAngle, GL_RED, GL_FLOAT, aRadRandomAngles.data());
+
 	// Shaders
 	// -------
 	const Char* macroDefineTransparency = "#define TRANSPARENCY\n";
@@ -244,6 +263,7 @@ I32 main()
 			glBindTextureUnit(0, bufDepthShadow);
 			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
 				glBindSampler(i, samplerAniso);
+			glBindTextureUnit(5, bufRandomAngles); // lack of sampler is intentional
 
 			auto SetUniformsGeoPass = [&](Shader& shader) {
 				shader.SetMat4("Model", modelSponza);
@@ -264,7 +284,8 @@ I32 main()
 				
 				shader.SetFloat("Bias", g_bias);
 				shader.SetFloat("ScaleNormalOffsetBias", g_scaleNormalOffsetBias);
-
+				shader.SetFloat("SizeFilter", g_SizeFilter);
+				shader.SetInt("NumDiscSamples", g_numDiscSamples);
 				shader.SetVec3Arr("AWsPointLightPosition", aWsPointLightPosition.data(), aWsPointLightPosition.size());
 				shader.SetVec3Arr("APointLightColor", aLightColor.data(), aLightColor.size());
 			};
@@ -447,6 +468,14 @@ void CallbackKeyboard(GLFWwindow* window, I32 key, I32 scancode, I32 action, I32
 	if (key == GLFW_KEY_N && action == GLFW_PRESS) {
 		g_normalMapping = !g_normalMapping;
 	}
+
+	if (key == GLFW_KEY_O && action == GLFW_PRESS) {
+		g_numDiscSamples--;
+	}
+	if (key == GLFW_KEY_P && action == GLFW_PRESS) {
+		g_numDiscSamples++;
+	}
+	g_numDiscSamples = glm::clamp<I32>(g_numDiscSamples, 1, 24);
 }
 
 void CallbackMessage(GLE source, GLE type, GLU id, GLE severity, GLS length,
@@ -498,6 +527,12 @@ void ProcessInput(GLFWwindow* window, F32 deltaTime)
 		g_scaleNormalOffsetBias -= 1.f;
 	if (glfwGetKey(window, GLFW_KEY_U) == GLFW_PRESS)
 		g_scaleNormalOffsetBias += 1.f;
+
+	if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
+		g_SizeFilter -= 0.1f;
+	if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
+		g_SizeFilter += 0.1f;
+	g_SizeFilter = glm::clamp(g_SizeFilter, 1.f, 200.f);
 }
 
 // renders a quad over whole image

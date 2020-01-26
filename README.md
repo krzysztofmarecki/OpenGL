@@ -8,9 +8,11 @@ Various graphic effects implemented in OpenGL.
 - stable &#42;
 - projection base cascade selection &#42;
 - smooth transition across cascades &#42;
-- Optimized fixed size PCF kernel using GatherCmp &#42;
 - partitioning using mix between logarithmic and linear
-- hard coded near and far (no bounding boxes)
+- hardcoded near and far (no bounding boxes)
+- PCF (2 modes)
+  - Optimized fixed size PCF kernel using GatherCmp &#42;
+  - Poisson disc sampling with random rotation tiled in world space &#42;
 
 &#42; Based on https://therealmjp.github.io/posts/shadow-maps/
 

@@ -19,6 +19,7 @@ layout (binding = 3) uniform sampler2D Normal;
 #ifdef TRANSPARENCY
 layout (binding = 4) uniform sampler2D Mask;
 #endif
+layout (binding = 5) uniform sampler3D RandomRotations;
 // point lights
 uniform vec3 AWsPointLightPosition[g_kNumPointLights];
 uniform vec3 APointLightColor[g_kNumPointLights];
@@ -33,6 +34,9 @@ uniform vec3 AScaleCascade[g_kNumCascades];
 // Shadow Bias
 uniform float Bias;
 uniform float ScaleNormalOffsetBias;
+// poisson disc PCF
+uniform float SizeFilter;
+uniform int NumDiscSamples;
 
 uniform vec3 ViewPos;
 
@@ -46,6 +50,33 @@ const float W[g_kKernelSize][g_kKernelSize] =
     { 1.0,1.0,1.0,1.0,1.0 },
     { 0.5,1.0,1.0,1.0,0.5 },
     { 0.0,0.5,1.0,0.5,0.0 }
+};
+// samples sorted ascending by distance from center (0, 0)
+const vec2 SortedPoissonDisc[24] = {
+	vec2(-0.0730308, -0.0837733),
+	vec2(-0.170629, 0.341044),
+	vec2(0.370098, 0.199377),
+	vec2(0.281167, -0.34373),
+	vec2(-0.170568, -0.530625),
+	vec2(-0.564257, -0.168859),
+	vec2(0.169286, 0.578539),
+	vec2(0.598559, -0.123753),
+	vec2(-0.611744, 0.186621),
+	vec2(-0.118259, 0.696219),
+	vec2(-0.520554, 0.510849),
+	vec2(0.425581, -0.732536),
+	vec2(0.705985, 0.517258),
+	vec2(0.923276, 0.135228),
+	vec2(0.924314, -0.167028),
+	vec2(0.434187, 0.853633),
+	vec2(0.066744, -0.955687),
+	vec2(-0.880551, 0.386151),
+	vec2(-0.974242, -0.051912),
+	vec2(0.019013, 0.97937),
+	vec2(0.806024, -0.558519),
+	vec2(-0.865108, -0.467513),
+	vec2(-0.391278, 0.903195),
+	vec2(-0.582202, -0.799799),
 };
 
 // Blinn-Phong
@@ -197,15 +228,47 @@ float SampleShadowMapFixedSizePCF(vec3 uvz, uint idxCascade) {
 	return dot(s, vec4(1.0f)) / w;
 }
 
+//--------------------------------------------------------------------------------------
+// Samples the shadow map using a PCF kernel made up from random points on a disc
+//--------------------------------------------------------------------------------------
+float SampleShadowMapRandomDiscPCF(vec3 uvz, uint idxCascade, vec3 wsPos) {
+	const vec2 sizeFilter = SizeFilter.xx * abs(AScaleCascade[idxCascade].xy);
+	const vec2 sizeShadowMap = textureSize(ShadowMapArray, 0).xy;
+    const float lightDepth = uvz.z + Bias;
+
+	float result;
+	if(sizeFilter.x > 1 || sizeFilter.y > 1) {
+		// Get a value to randomly rotate the kernel by
+		const ivec3 sizeRandomRotations = textureSize(RandomRotations, 0);
+		const ivec3 posSample = ivec3(wsPos * 32) % sizeRandomRotations; // multiply so shadow are less blocky (and more noisy)
+		const float radAngle = texelFetch(RandomRotations, posSample, 0).x;
+		const mat2x2 randomRotationMatrix = mat2x2(vec2(cos(radAngle), -sin(radAngle)),
+												   vec2(sin(radAngle),  cos(radAngle)));
+		const vec2 scaleSample = 0.5 * sizeFilter / sizeShadowMap;
+
+		float sum = 0.0f;
+		for(int i = 0; i < NumDiscSamples; ++i) {
+			const vec2 sampleOffset = (randomRotationMatrix * SortedPoissonDisc[i]) * scaleSample;
+			const vec2 samplePos = uvz.xy + sampleOffset;
+			sum += texture(ShadowMapArray, vec4(samplePos, idxCascade, lightDepth));
+        }
+		result = sum / NumDiscSamples;
+    } else {
+		result = texture(ShadowMapArray, vec4(uvz.xy, idxCascade, lightDepth));
+	}
+	
+	return result;
+}
 //-------------------------------------------------------------------------------------------------
 // Samples the appropriate shadow map cascade
 //-------------------------------------------------------------------------------------------------
-float SampleShadowCascade(vec3 uvz, uint cascadeIdx)
+float SampleShadowCascade(vec3 uvz, uint idxCascade, vec3 wsPos)
 {
-    uvz += AOffsetCascade[cascadeIdx].xyz;
-    uvz *= AScaleCascade[cascadeIdx].xyz;
+    uvz += AOffsetCascade[idxCascade].xyz;
+    uvz *= AScaleCascade[idxCascade].xyz;
 
-    return SampleShadowMapFixedSizePCF(uvz, cascadeIdx);
+    //return SampleShadowMapFixedSizePCF(uvz, idxCascade);
+	return SampleShadowMapRandomDiscPCF(uvz, idxCascade, wsPos);
 }
 //-------------------------------------------------------------------------------------------------
 // Calculates the offset to use for sampling the shadow map, based on the surface normal
@@ -234,7 +297,7 @@ float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal)
 
     const vec3 wsOffset = GetWsShadowPosOffset(nDotL, wsNormal) / abs(AScaleCascade[idxCascade].x);
 	const vec3 uvz = (ReferenceShadowMatrix * vec4(wsPos + wsOffset, 1.0f)).xyz;
-	float shadowVisibility = SampleShadowCascade(uvz, idxCascade);
+	float shadowVisibility = SampleShadowCascade(uvz, idxCascade, wsPos);
 	
 	// Sample the next cascade, and blend between the two results to smooth the transition
 	const float BlendThreshold = 0.2f;
@@ -254,7 +317,7 @@ float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal)
 		const vec3 wsNextCascadeOffset = GetWsShadowPosOffset(nDotL, wsNormal) / abs(AScaleCascade[idxCascade + 1].x);
         // Project into shadow space
 		const vec3 nextCascadeShadowPosition = (ReferenceShadowMatrix * vec4(wsPos + wsNextCascadeOffset, 1.0f)).xyz;
-		const float nextSplitVisibility = SampleShadowCascade(nextCascadeShadowPosition, idxCascade + 1);
+		const float nextSplitVisibility = SampleShadowCascade(nextCascadeShadowPosition, idxCascade + 1, wsPos);
 		const float mixAmt = smoothstep(0.0f, BlendThreshold, fadeFactor);
 		shadowVisibility = mix(nextSplitVisibility, shadowVisibility, mixAmt);
     }
