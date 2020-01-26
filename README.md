@@ -2,7 +2,7 @@
 
 Various graphic effects implemented in OpenGL.
 
-![](https://s6.ifotos.pl/img/Beztytulu_qapprpw.png)
+![](https://i.ibb.co/dDdTCbM/Bez-tytu-u.png)
 
 #### Cascade shadow mapping
 - stable &#42;
