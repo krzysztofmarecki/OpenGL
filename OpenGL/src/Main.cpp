@@ -36,8 +36,8 @@ Camera	g_camera(Vec3(0.0f, 0.0f, 3.0f));
 
 F32		g_exposure = 1.0f;
 Bool	g_normalMapping = true;
-F32		g_bias = 0.00017;
-F32		g_scaleNormalOffsetBias = 150;
+F32		g_bias = 0;
+F32		g_scaleNormalOffsetBias = 0;
 // debug shader globals
 Bool	g_debug = false;
 I32		g_debugCascadeIdx = 0;
@@ -83,6 +83,7 @@ I32 main()
 	
 	glClearColor(0.5f, 0.8f, 1.6f, 1.0f);	// color of sky, I don't draw skybox (I'm lazy)
 	glEnable(GL_CULL_FACE);
+	glPolygonOffset(-2, -8);				// slope scale and constant depth bias for shadow map rendering
 	
 	// configure floating point framebuffer
 	// ------------------------------------
@@ -221,6 +222,7 @@ I32 main()
 		// CSM rendering
 		// -------------
 		{
+			glEnable(GL_POLYGON_OFFSET_FILL);
 			glViewport(0, 0, sShadowMap, sShadowMap);
 			glBindFramebuffer(GL_FRAMEBUFFER, fboShadowMap);
 			for (Size i = 0; i < aLightProj.size(); i++) {
@@ -235,6 +237,7 @@ I32 main()
 				passDirectShadowTransp.Use();
 				sceneSponza.DrawGeometryWithMaskOnlyTransp();
 			}
+			glDisable(GL_POLYGON_OFFSET_FILL);
 			glViewport(0, 0, g_kWScreen, g_kHScreen);
 		}
 		// forward pass, lightning + generate bufDiffuseLight with mipmaps
