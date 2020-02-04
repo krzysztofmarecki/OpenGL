@@ -295,7 +295,7 @@ float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal)
 			idxCascade = i;
 	}
 
-    const vec3 wsPosOffset = GetWsShadowPosOffset(nDotL, wsNormal) / abs(AScaleCascade[idxCascade].x);
+    const vec3 wsPosOffset = GetWsShadowPosOffset(nDotL, wsNormal);
 	const vec3 uvz = (ReferenceShadowMatrix * vec4(wsPos + wsPosOffset, 1.0f)).xyz;
 	float shadowVisibility = SampleShadowCascade(uvz, idxCascade, wsPos);
 	
@@ -313,13 +313,9 @@ float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal)
 	fadeFactor = max(distToEdge, fadeFactor);
 	
 	if(fadeFactor <= kBlendThreshold && idxCascade != (g_kNumCascades - 1)) {
-		// Apply offset
-		const vec3 wsNextCascadePosOffset = GetWsShadowPosOffset(nDotL, wsNormal) / abs(AScaleCascade[idxCascade + 1].x);
-        // Project into shadow space
-		const vec3 nextCascadeShadowPosition = (ReferenceShadowMatrix * vec4(wsPos + wsNextCascadePosOffset, 1.0f)).xyz;
-		const float nextSplitVisibility = SampleShadowCascade(nextCascadeShadowPosition, idxCascade + 1, wsPos);
+		const float nextSplitShadowVisibility = SampleShadowCascade(uvz, idxCascade + 1, wsPos);
 		const float mixAmt = smoothstep(0.0f, kBlendThreshold, fadeFactor);
-		shadowVisibility = mix(nextSplitVisibility, shadowVisibility, mixAmt);
+		shadowVisibility = mix(nextSplitShadowVisibility, shadowVisibility, mixAmt);
     }
 	return shadowVisibility;
 }
