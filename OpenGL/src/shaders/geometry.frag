@@ -1,5 +1,5 @@
 #version 440 core
-layout (location = 0) out vec3 outFragColor;
+layout (location = 0) out vec3 outColor;
 layout (location = 1) out float outDiffuseLight;
 
 const int g_kNumCascades = 4;
@@ -24,8 +24,8 @@ layout (binding = 5) uniform sampler3D RandomRotations;
 uniform vec3 AWsPointLightPosition[g_kNumPointLights];
 uniform vec3 APointLightColor[g_kNumPointLights];
 // dir light
-uniform vec3 WsLightDir;
-uniform vec3 DirLightColor;
+uniform vec3 WsDirLight;
+uniform vec3 ColorDirLight;
 // CSM
 uniform float AVsFarCascade[g_kNumCascades];
 uniform mat4 ReferenceShadowMatrix;
@@ -38,12 +38,12 @@ uniform float ScaleNormalOffsetBias;
 uniform float SizeFilter;
 uniform int NumDiscSamples;
 
-uniform vec3 ViewPos;
+uniform vec3 WsPosCamera;
 
 uniform bool NormalMapping;
 
-const int g_kKernelSize = 5;
-const float W[g_kKernelSize][g_kKernelSize] =
+const int g_kSizeKernel = 5;
+const float W[g_kSizeKernel][g_kSizeKernel] =
 {
     { 0.0,0.5,1.0,0.5,0.0 },
     { 0.5,1.0,1.0,1.0,0.5 },
@@ -80,33 +80,33 @@ const vec2 SortedPoissonDisc[24] = {
 };
 
 // Blinn-Phong
-vec3 Spec(vec3 normal, vec3 fragPos, vec3 lightColor, vec3 lightDir) {
-    const vec3 viewDir = normalize(ViewPos - fragPos);
-	const vec3 halfwayDir = normalize(lightDir + viewDir);  
-    const float spec = pow(max(dot(normal, halfwayDir), 0.0), 64.0);
-    return lightColor * spec;
+vec3 Spec(vec3 wsNormal, vec3 wsPos, vec3 colorLight, vec3 wsDirLight) {
+    const vec3 wsDirView = normalize(WsPosCamera - wsPos);
+	const vec3 wsHalfway = normalize(wsDirLight + wsDirView);  
+    const float spec = pow(max(dot(wsNormal, wsHalfway), 0.0), 64.0);
+    return colorLight * spec;
 }
 
-float Attenuation(vec3 wsLightPos, vec3 wsPos) {
-	const float distance = length(wsLightPos - wsPos);
+float Attenuation(vec3 wsPosLight, vec3 wsPos) {
+	const float distance = length(wsPosLight - wsPos);
     return  1.0 / (distance * distance);
 }
 
-struct DiffColor{
-vec3 diff;	// pure diffuse light without affecting surface texture
+struct Foo {
+vec3 colorPureDiffuse;	// pure diffuse light without affecting surface texture
 vec3 color;
 };
-DiffColor PointLight(vec3 wsNormal, vec3 wsPos, vec3 wsLightPos, vec3 lightColor, vec3 diffColor, vec2 uv) {
-	const vec3 wsLightDir = normalize(wsLightPos - wsPos);
-	const float attenuation = Attenuation(wsLightPos, wsPos);
+Foo PointLight(vec3 wsNormal, vec3 wsPos, vec3 wsPosLight, vec3 colorLight, vec3 colorDiffuse, vec2 uv) {
+	const vec3 wsDirLight = normalize(wsPosLight - wsPos);
+	const float attenuation = Attenuation(wsPosLight, wsPos);
 
-	const float nDotL = max(dot(wsNormal, wsLightDir), 0);
+	const float nDotL = max(dot(wsNormal, wsDirLight), 0);
 
-	const vec3 diff = nDotL * lightColor * attenuation;
-	const vec3 diffuse = diff * diffColor;
-	const vec3 specular = Spec(wsNormal, wsPos, lightColor, wsLightDir) * attenuation * texture(Specular, uv).r;
+	const vec3 colorPureDiffuse = nDotL * colorLight * attenuation;
+	const vec3 diffuse = colorPureDiffuse * colorDiffuse;
+	const vec3 specular = Spec(wsNormal, wsPos, colorLight, wsDirLight) * attenuation * texture(Specular, uv).r;
 	
-    return DiffColor(diff, diffuse + specular);
+    return Foo(colorPureDiffuse, diffuse + specular);
 }
 
 // functions with comments like below was rewritten to GLSL from https://github.com/TheRealMJP/Shadows/blob/master/Shadows/Mesh.hlsl
@@ -116,25 +116,25 @@ DiffColor PointLight(vec3 wsNormal, vec3 wsPos, vec3 wsLightPos, vec3 lightColor
 // from "Fast Conventional Shadow Filtering" by Holger Gruen, in GPU Pro.
 //-------------------------------------------------------------------------------------------------
 float SampleShadowMapFixedSizePCF(vec3 uvz, uint idxCascade) {
-	const vec2 shadowMapSize = textureSize(ShadowMapArray, 0).xy;
-    const float lightDepth = uvz.z + Bias;
+	const vec2 sizeShadowMap = textureSize(ShadowMapArray, 0).xy;
+    const float depth = uvz.z + Bias;
     vec2 tc = uvz.xy;
 
     vec4 s = vec4(0.0f);
-    const vec2 stc = (shadowMapSize * tc.xy) + vec2(0.5f, 0.5f);
+    const vec2 stc = (sizeShadowMap * tc.xy) + vec2(0.5f, 0.5f);
     const vec2 tcs = floor(stc);
     vec2 fc;
     float w = 0.0f;
 
     fc.xy = stc - tcs;
-	tc.xy = tcs / shadowMapSize;
+	tc.xy = tcs / sizeShadowMap;
 		
-	for(int row = 0; row < g_kKernelSize; ++row) {
-		for(int col = 0; col < g_kKernelSize; ++col)
+	for(int row = 0; row < g_kSizeKernel; ++row) {
+		for(int col = 0; col < g_kSizeKernel; ++col)
 			w += W[row][col];
 	}
 
-	const int KS_2 = g_kKernelSize / 2;
+	const int KS_2 = g_kSizeKernel / 2;
     vec4 v1[KS_2 + 1];
     vec2 v0[KS_2 + 1];
 
@@ -154,7 +154,7 @@ float SampleShadowMapFixedSizePCF(vec3 uvz, uint idxCascade) {
 					value += W[row + KS_2 - 1][col + KS_2 - 1];
             } // if(row > -KS_2)
 			if(value != 0.0f)
-				v1[(col + KS_2) / 2] = textureGatherOffset(ShadowMapArray, vec3(tc.xy, idxCascade), lightDepth, ivec2(col, row));
+				v1[(col + KS_2) / 2] = textureGatherOffset(ShadowMapArray, vec3(tc.xy, idxCascade), depth, ivec2(col, row));
             else
 				v1[(col + KS_2) / 2] = vec4(0.0f);
 			
@@ -234,7 +234,7 @@ float SampleShadowMapFixedSizePCF(vec3 uvz, uint idxCascade) {
 float SampleShadowMapRandomDiscPCF(vec3 uvz, uint idxCascade, vec3 wsPos) {
 	const vec2 sizeFilter = SizeFilter.xx * abs(AScaleCascade[idxCascade].xy);
 	const vec2 sizeShadowMap = textureSize(ShadowMapArray, 0).xy;
-    const float lightDepth = uvz.z + Bias;
+    const float depth = uvz.z + Bias;
 
 	float result;
 	if(sizeFilter.x > 1 || sizeFilter.y > 1) {
@@ -248,13 +248,13 @@ float SampleShadowMapRandomDiscPCF(vec3 uvz, uint idxCascade, vec3 wsPos) {
 
 		float sum = 0.0f;
 		for(int i = 0; i < NumDiscSamples; ++i) {
-			const vec2 sampleOffset = (randomRotationMatrix * SortedPoissonDisc[i]) * scaleSample;
-			const vec2 samplePos = uvz.xy + sampleOffset;
-			sum += texture(ShadowMapArray, vec4(samplePos, idxCascade, lightDepth));
+			const vec2 offsetSample = (randomRotationMatrix * SortedPoissonDisc[i]) * scaleSample;
+			const vec2 posSample = uvz.xy + offsetSample;
+			sum += texture(ShadowMapArray, vec4(posSample, idxCascade, depth));
         }
 		result = sum / NumDiscSamples;
     } else {
-		result = texture(ShadowMapArray, vec4(uvz.xy, idxCascade, lightDepth));
+		result = texture(ShadowMapArray, vec4(uvz.xy, idxCascade, depth));
 	}
 	
 	return result;
@@ -275,63 +275,63 @@ float SampleShadowCascade(vec3 uvz, uint idxCascade, vec3 wsPos)
 //-------------------------------------------------------------------------------------------------
 vec3 GetWsShadowPosOffset(float nDotL, vec3 wsNormal)
 {
-    const float texelSize = 2.0f / textureSize(ShadowMapArray, 0).x;
+    const float sizeTexel = 2.0f / textureSize(ShadowMapArray, 0).x;
     const float nmlOffsetScale = 1.0f - nDotL;
-    return texelSize * ScaleNormalOffsetBias * nmlOffsetScale * wsNormal;
+    return sizeTexel * ScaleNormalOffsetBias * nmlOffsetScale * wsNormal;
 }
 
 float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal)
 {
-	int idxCascade = g_kNumCascades-1;
     const vec3 projectionShadowPos = (ReferenceShadowMatrix * vec4(wsPos, 1.0f)).xyz;
-
+	
+	int idxCascade = g_kNumCascades-1;
 	// projection base cascade selection
 	for(int i = g_kNumCascades - 1; i >= 0; --i) {
 		// Select based on whether or not the pixel is inside the projection
-		vec3 cascadePos = projectionShadowPos + AOffsetCascade[i].xyz;
-		cascadePos *= AScaleCascade[i].xyz;
-		cascadePos = abs(cascadePos - 0.5f);
-		if(cascadePos.x <= 0.5f && cascadePos.y <= 0.5f)
+		vec2 uv = projectionShadowPos.xy + AOffsetCascade[i].xy;
+		uv *= AScaleCascade[i].xy;
+		uv = abs(uv - 0.5f);
+		if(uv.x <= 0.5f && uv.y <= 0.5f)
 			idxCascade = i;
 	}
 
-    const vec3 wsOffset = GetWsShadowPosOffset(nDotL, wsNormal) / abs(AScaleCascade[idxCascade].x);
-	const vec3 uvz = (ReferenceShadowMatrix * vec4(wsPos + wsOffset, 1.0f)).xyz;
+    const vec3 wsPosOffset = GetWsShadowPosOffset(nDotL, wsNormal) / abs(AScaleCascade[idxCascade].x);
+	const vec3 uvz = (ReferenceShadowMatrix * vec4(wsPos + wsPosOffset, 1.0f)).xyz;
 	float shadowVisibility = SampleShadowCascade(uvz, idxCascade, wsPos);
 	
 	// Sample the next cascade, and blend between the two results to smooth the transition
-	const float BlendThreshold = 0.2f;
+	const float kBlendThreshold = 0.2f;
 
-	const float nextSplit = AVsFarCascade[idxCascade];
-	const float splitSize = idxCascade == 0 ? nextSplit : nextSplit - AVsFarCascade[idxCascade - 1];
-	float fadeFactor = (nextSplit - vsDepth) / splitSize;
+	const float vsNextSplit = AVsFarCascade[idxCascade];
+	const float vsSizeSplit = idxCascade == 0 ? vsNextSplit : vsNextSplit - AVsFarCascade[idxCascade - 1];
+	float fadeFactor = (vsNextSplit - vsDepth) / vsSizeSplit;
 	
-	vec3 cascadePos = projectionShadowPos + AOffsetCascade[idxCascade].xyz;
-	cascadePos *= AScaleCascade[idxCascade].xyz;
-	cascadePos = abs(cascadePos * 2.0f - 1.0f);
-	const float distToEdge = 1.0f - max(max(cascadePos.x, cascadePos.y), cascadePos.z);
+	vec3 posCascade = projectionShadowPos + AOffsetCascade[idxCascade].xyz;
+	posCascade *= AScaleCascade[idxCascade].xyz;
+	posCascade = abs(posCascade * 2.0f - 1.0f);
+	const float distToEdge = 1.0f - max(max(posCascade.x, posCascade.y), posCascade.z);
 	fadeFactor = max(distToEdge, fadeFactor);
 	
-	if(fadeFactor <= BlendThreshold && idxCascade != g_kNumCascades - 1) {
+	if(fadeFactor <= kBlendThreshold && idxCascade != (g_kNumCascades - 1)) {
 		// Apply offset
-		const vec3 wsNextCascadeOffset = GetWsShadowPosOffset(nDotL, wsNormal) / abs(AScaleCascade[idxCascade + 1].x);
+		const vec3 wsNextCascadePosOffset = GetWsShadowPosOffset(nDotL, wsNormal) / abs(AScaleCascade[idxCascade + 1].x);
         // Project into shadow space
-		const vec3 nextCascadeShadowPosition = (ReferenceShadowMatrix * vec4(wsPos + wsNextCascadeOffset, 1.0f)).xyz;
+		const vec3 nextCascadeShadowPosition = (ReferenceShadowMatrix * vec4(wsPos + wsNextCascadePosOffset, 1.0f)).xyz;
 		const float nextSplitVisibility = SampleShadowCascade(nextCascadeShadowPosition, idxCascade + 1, wsPos);
-		const float mixAmt = smoothstep(0.0f, BlendThreshold, fadeFactor);
+		const float mixAmt = smoothstep(0.0f, kBlendThreshold, fadeFactor);
 		shadowVisibility = mix(nextSplitVisibility, shadowVisibility, mixAmt);
     }
 	return shadowVisibility;
 }
 
-DiffColor DirrLight(vec3 wsNormal, vec3 wsPos, float vdDepth, vec3 lightColor, vec3 wsLightDir, vec3 diffColor, vec2 uv) {
-	const float nDotL = max(dot(wsNormal, wsLightDir), 0);
-	const vec3 diff = nDotL * lightColor;
-	const vec3 diffuse = diff * diffColor;
-	const vec3 specular = Spec(wsNormal, wsPos, lightColor, wsLightDir) * texture(Specular, uv).r;
+Foo DirrLight(vec3 wsNormal, vec3 wsPos, float vdDepth, vec3 colorLight, vec3 wsDirLight, vec3 diffColor, vec2 uv) {
+	const float nDotL = max(dot(wsNormal, wsDirLight), 0);
+	const vec3 colorPureDiffuse = nDotL * colorLight;
+	const vec3 diffuse = colorPureDiffuse * diffColor;
+	const vec3 specular = Spec(wsNormal, wsPos, colorLight, wsDirLight) * texture(Specular, uv).r;
 	
 	const float lightning = ShadowVisibility(wsPos, vdDepth, nDotL, wsNormal);
-	return DiffColor(lightning * diff, lightning * (diffuse + specular));
+	return Foo(lightning * colorPureDiffuse, lightning * (diffuse + specular));
 }
 
 void main() {
@@ -341,7 +341,7 @@ void main() {
 	#endif
 	const float vsDepth = Input.VsDepth;
 	
-	const vec3 diffColor = texture(Diffuse, Input.UV).rgb;
+	const vec3 colorDiffuse = texture(Diffuse, Input.UV).rgb;
 	const vec3 N = normalize(Input.WsNormal);
 	vec3 T = normalize(Input.WsTangent);
 	T = normalize(T - dot(T, N) * N); // re-orthogonalize T with respect to N
@@ -357,23 +357,23 @@ void main() {
 	// you may want to pass vertex normal for normal offset bias even if normal mapping is enabled
 
 	vec3 color = vec3(0);
-	vec3 diff = vec3(0);
+	vec3 colorPureDiffuse = vec3(0);
 	// dir light
-	DiffColor tempSun = DirrLight(wsNormal, Input.WsPos, vsDepth, DirLightColor, WsLightDir, diffColor, Input.UV);
+	Foo tempSun = DirrLight(wsNormal, Input.WsPos, vsDepth, ColorDirLight, WsDirLight, colorDiffuse, Input.UV);
 	color += tempSun.color;
-	diff += tempSun.diff;
+	colorPureDiffuse += tempSun.colorPureDiffuse;
 
 	// point lights
     for(int i = 0; i < g_kNumPointLights; ++i){
-        DiffColor tempPoint = PointLight(wsNormal, Input.WsPos, AWsPointLightPosition[i], APointLightColor[i], diffColor, Input.UV);
+        Foo tempPoint = PointLight(wsNormal, Input.WsPos, AWsPointLightPosition[i], APointLightColor[i], colorDiffuse, Input.UV);
 		color += tempPoint.color;
-		diff += tempPoint.diff;
+		colorPureDiffuse += tempPoint.colorPureDiffuse;
     }
 
 	// ambient
-	color += diffColor * .3;
+	color += colorDiffuse * .3;
 
-	outDiffuseLight = log(0.01+dot(diff, vec3(0.2126, 0.7152, 0.0722)));
-	outFragColor = color;
+	outDiffuseLight = log(0.01+dot(colorPureDiffuse, vec3(0.2126, 0.7152, 0.0722)));
+	outColor = color;
 }
 

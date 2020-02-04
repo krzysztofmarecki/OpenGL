@@ -5,9 +5,7 @@
 
 #include "types.h"
 
-// An abstract camera class that processes input and calculates the corresponding Eular Angles, Vectors and Matrices for use in OpenGL
-class Camera
-{
+class Camera {
 public:
 	enum class Movement {
 		FORWARD,
@@ -16,37 +14,36 @@ public:
 		RIGHT
 	};
 
-	Camera(Vec3 position) : m_vPosition(position) {
+	Camera(Vec3 position) : m_wsPosition(position) {
 		UpdateCameraVectors();
 	}
 
-	// Returns the view matrix calculated using Eular Angles and the LookAt Matrix
 	Mat4 GetViewMatrix() const {
-		return glm::lookAt(m_vPosition, m_vPosition + m_vFront, m_vUp);
+		return glm::lookAt(m_wsPosition, m_wsPosition + m_wsFront, m_wsUp);
 	}
 
-	// Processes input received from any keyboard-like input system. Accepts input parameter in the form of camera defined ENUM (to abstract it from windowing systems)
+	// Processes input received from any keyboard-like input system.
 	void ProcessKeyboard(Movement direction, F32 deltaTime);
 
-	// Processes input received from a mouse input system. Expects the offset value in both the x and y direction.
+	// Processes input received from a mouse input system.
 	void ProcessMouseMovement(F32 xOffset, F32 yOffset);
 
-	// Processes input received from a mouse scroll-wheel event. Only requires input on the vertical wheel-axis
+	// Processes input received from a mouse scroll-wheel event.
 	void ProcessMouseScroll(F32 yoffset);
 
-	Vec3 GetPosition()	const { return m_vPosition; }
-	F32 GetDegVertFOV()	const { return m_degVertFOV; }
-	Vec3 GetWorldUp()	const { return m_vWorldUp; }
+	Vec3 GetWsPosition() const { return m_wsPosition; }
+	F32 GetDegVertFOV()	 const { return m_degVertFOV; }
+	Vec3 GetWsWorldUp()	 const { return m_wsWorldUp; }
 private:
-	// Calculates the vFront vector from the Camera's (updated) Eular Angles
+	// Calculates front, up and right vectors based on updated pitch and yaw
 	void UpdateCameraVectors();
 
 
-	Vec3 m_vPosition;
-	Vec3 m_vFront;
-	Vec3 m_vUp;
-	Vec3 m_vRight;
-	const Vec3 m_vWorldUp = Vec3(0, 1, 0);
+	Vec3 m_wsPosition;
+	Vec3 m_wsFront;
+	Vec3 m_wsUp;
+	Vec3 m_wsRight;
+	const Vec3 m_wsWorldUp = Vec3(0, 1, 0);
 	
 	F32 m_degYaw		= -90;
 	F32 m_degPitch		= 0;

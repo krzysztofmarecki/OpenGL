@@ -18,7 +18,7 @@
 const U32 g_kWScreen = 1280;
 const U32 g_kHScreen = 720;
 const U32 g_kNumCascades = 4;
-const Bool g_kVSyncOff = false;
+const Bool g_kVSync = true;
 
 std::array<Mat4, g_kNumCascades>
 CalculateCascadeViewProj(const std::array<F32, g_kNumCascades + 1> & limitsCascade, const Camera & g_camera, const F32 sShadowMap, const Vec3 dirLight);
@@ -42,9 +42,10 @@ F32		g_scaleNormalOffsetBias = 0;
 Bool	g_debug = false;
 I32		g_debugCascadeIdx = 0;
 
-Vec3	g_posSun(217, 265, -80);
-F32		g_SizeFilter = 9;
+Vec3	g_wsPosSun(217, 265, -80);
+F32		g_sizeFilter = 9;
 I32		g_numDiscSamples = 9;
+
 I32 main()
 {
 	// glfw: initialize and configure
@@ -53,7 +54,7 @@ I32 main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	if constexpr (g_kVSyncOff)
+	if constexpr (!g_kVSync)
 		glfwWindowHint(GLFW_DOUBLEBUFFER, GL_FALSE);
 	GLFWwindow* window = glfwCreateWindow(g_kWScreen, g_kHScreen, "LearnOpenGL", nullptr, nullptr);
 	if (window == nullptr)
@@ -105,10 +106,8 @@ I32 main()
 	glNamedFramebufferTexture(fboHDR, GL_COLOR_ATTACHMENT1, bufDiffuseLight, 0);
 	glNamedFramebufferTexture(fboHDR, GL_DEPTH_ATTACHMENT, bufDepth, 0);
 	auto AssertFBOIsComplete = [](GLU fbo) {
-#ifndef NDEBUG
 		if (glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 			assert(false && "Framebuffer not complete!\n");
-#endif // !NDEBUG
 	};
 	AssertFBOIsComplete(fboHDR);
 	
@@ -130,11 +129,10 @@ I32 main()
 	// CSM invariants
 	// --------------
 	const std::array<F32, g_kNumCascades + 1> aVsLimitsCascade = CalculateVsLimitsCascade(1, 1000);
-	const std::array<F32, g_kNumCascades> aVsFarCascade	= [](const std::array<F32, g_kNumCascades + 1>& rLimCascades) {
+	const std::array<F32, g_kNumCascades> aVsFarCascade	= [](const std::array<F32, g_kNumCascades + 1>& rAVsLimCascade) {
 		std::array<F32, g_kNumCascades> aVsFarCascade;
-		for (Size i = 0; i < g_kNumCascades; i++) {
-			aVsFarCascade[i] = rLimCascades[i + 1];
-		}
+		for (Size i = 0; i < g_kNumCascades; i++)
+			aVsFarCascade[i] = rAVsLimCascade[i + 1];
 		return aVsFarCascade;
 	}(aVsLimitsCascade);
 	
@@ -183,12 +181,12 @@ I32 main()
 		lastFrame = currentFrame;
 		ProcessInput(window, deltaTime);
 
-		if constexpr (g_kVSyncOff)
+		if constexpr (!g_kVSync)
 			std::cout << 1. / deltaTime << "\n";
 		
 		// CSM logic
 		// ---------
-		const Vec3 wsDirLight = glm::normalize(-g_posSun); // sun looks at Vec3(0, 0, 0)
+		const Vec3 wsDirLight = glm::normalize(-g_wsPosSun); // sun looks at Vec3(0, 0, 0)
 		const std::array<Mat4, g_kNumCascades> aLightProj = CalculateCascadeViewProj(aVsLimitsCascade, g_camera, sShadowMap, wsDirLight);
 		// moves from <-1,1> NDC to <0,1> UV space
 		// by scaling by 0.5 in x and y to <-0.5, 0.5>
@@ -241,7 +239,7 @@ I32 main()
 			glViewport(0, 0, g_kWScreen, g_kHScreen);
 		}
 		// forward pass, lightning + generate bufDiffuseLight with mipmaps
-		// -----------------------------------------------
+		// ---------------------------------------------------------------
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, fboHDR);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear color as well, because I don't render skybox
@@ -273,13 +271,13 @@ I32 main()
 				shader.SetMat4("Projection", projection);
 				shader.SetMat4("View", view);
 				
-				shader.SetVec3("ViewPos", g_camera.GetPosition());
+				shader.SetVec3("WsPosCamera", g_camera.GetWsPosition());
 
 				shader.SetMat3("NormalMatrix", glm::transpose(glm::inverse(Mat3(modelSponza))));
 				shader.SetBool("NormalMapping", g_normalMapping);
 				
-				shader.SetVec3("WsLightDir", -wsDirLight);	// notice "-"
-				shader.SetVec3("DirLightColor", Vec3(3));
+				shader.SetVec3("WsDirLight", -wsDirLight);	// notice "-"
+				shader.SetVec3("ColorDirLight", Vec3(3));
 				shader.SetFloatArr("AVsFarCascade", aVsFarCascade.data(), g_kNumCascades);
 				shader.SetMat4("ReferenceShadowMatrix", referenceMatrix);
 				shader.SetVec3Arr("AScaleCascade", aScaleCascade.data(), aScaleCascade.size());
@@ -287,7 +285,7 @@ I32 main()
 				
 				shader.SetFloat("Bias", g_bias);
 				shader.SetFloat("ScaleNormalOffsetBias", g_scaleNormalOffsetBias);
-				shader.SetFloat("SizeFilter", g_SizeFilter);
+				shader.SetFloat("SizeFilter", g_sizeFilter);
 				shader.SetInt("NumDiscSamples", g_numDiscSamples);
 				shader.SetVec3Arr("AWsPointLightPosition", aWsPointLightPosition.data(), aWsPointLightPosition.size());
 				shader.SetVec3Arr("APointLightColor", aLightColor.data(), aLightColor.size());
@@ -307,7 +305,7 @@ I32 main()
 			glGenerateTextureMipmap(bufDiffuseLight);
 		}
 		// final pass, apply exposure, tone mapping and gamma correction
-		// --------------------------------------------------------------------------------------------------
+		// -------------------------------------------------------------
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glClear(GL_DEPTH_BUFFER_BIT);
@@ -322,7 +320,7 @@ I32 main()
 			} else {
 				glBindTextureUnit(0, bufColor);
 				glBindTextureUnit(1, bufDiffuseLight);
-				passExposureToneGamma.SetFloat("ManualExposure", g_exposure);
+				passExposureToneGamma.SetFloat("Exposure", g_exposure);
 				passExposureToneGamma.SetFloat("LevelLastMipMap", log2f(g_kWScreen));
 			}
 			passExposureToneGamma.SetBool("Debug", g_debug);
@@ -332,10 +330,10 @@ I32 main()
 
 		// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
 		// -------------------------------------------------------------------------------
-		if constexpr (g_kVSyncOff)
-			glFlush();
-		else
+		if constexpr (g_kVSync)
 			glfwSwapBuffers(window);
+		else
+			glFlush();
 		
 		glfwPollEvents();
 	}
@@ -399,7 +397,7 @@ std::array<Mat4, g_kNumCascades> CalculateCascadeViewProj(const std::array<F32, 
 		const Mat4 view = glm::lookAt(
 			wsPosSunCascade,
 			wsFrustrumCenter,
-			camera.GetWorldUp()
+			camera.GetWsWorldUp()
 		);
 
 		// stabilize (ShaderX6 version)
@@ -517,9 +515,9 @@ void ProcessInput(GLFWwindow* window, F32 deltaTime)
 	}
 
 	if (glfwGetKey(window, GLFW_KEY_KP_4) == GLFW_PRESS)
-		g_posSun.x -= 1;
+		g_wsPosSun.x -= 1;
 	if (glfwGetKey(window, GLFW_KEY_KP_6) == GLFW_PRESS)
-		g_posSun.x += 1;
+		g_wsPosSun.x += 1;
 
 	if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
 		g_bias -= 0.00001f;
@@ -532,10 +530,10 @@ void ProcessInput(GLFWwindow* window, F32 deltaTime)
 		g_scaleNormalOffsetBias += 1.f;
 
 	if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
-		g_SizeFilter -= 0.1f;
+		g_sizeFilter -= 0.1f;
 	if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
-		g_SizeFilter += 0.1f;
-	g_SizeFilter = glm::clamp(g_SizeFilter, 1.f, 200.f);
+		g_sizeFilter += 0.1f;
+	g_sizeFilter = glm::clamp(g_sizeFilter, 1.f, 200.f);
 }
 
 // renders a quad over whole image
