@@ -36,15 +36,15 @@ Camera	g_camera(Vec3(0.0f, 0.0f, 3.0f));
 
 F32		g_exposure = 1.0f;
 Bool	g_normalMapping = true;
-F32		g_bias = 0;
+F32		g_bias = 0.0;
 F32		g_scaleNormalOffsetBias = 0;
 // debug shader globals
 Bool	g_debug = false;
 I32		g_debugCascadeIdx = 0;
 
 Vec3	g_wsPosSun(217, 265, -80);
-F32		g_sizeFilter = 9;
-I32		g_numDiscSamples = 9;
+F32		g_sizeFilter = 15;
+F32		g_widthLight = 800;
 
 I32 main()
 {
@@ -84,7 +84,7 @@ I32 main()
 	
 	glClearColor(0.5f, 0.8f, 1.6f, 1.0f);	// color of sky, I don't draw skybox (I'm lazy)
 	glEnable(GL_CULL_FACE);
-	glPolygonOffset(-2, -8);				// slope scale and constant depth bias for shadow map rendering
+	glPolygonOffset(-2.5, -8);				// slope scale and constant depth bias for shadow map rendering
 	
 	// configure floating point framebuffer
 	// ------------------------------------
@@ -120,12 +120,23 @@ I32 main()
 	GLS sShadowMap = 2048;
 	glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &bufDepthShadow);
 	glTextureStorage3D(bufDepthShadow, 1, GL_DEPTH_COMPONENT16, sShadowMap, sShadowMap, g_kNumCascades);
-	glTextureParameteri(bufDepthShadow, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-	glTextureParameteri(bufDepthShadow, GL_TEXTURE_COMPARE_FUNC, GL_GEQUAL);
 	glNamedFramebufferTexture(fboShadowMap, GL_COLOR_ATTACHMENT0, GL_NONE, 0);
 	glNamedFramebufferTextureLayer(fboShadowMap, GL_DEPTH_ATTACHMENT, bufDepthShadow, 0, 0);
 	AssertFBOIsComplete(fboShadowMap);
 	
+	GLU samplerShadowDepth;
+	glCreateSamplers(1, &samplerShadowDepth);
+	glSamplerParameteri(samplerShadowDepth, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glSamplerParameteri(samplerShadowDepth, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glSamplerParameteri(samplerShadowDepth, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glSamplerParameteri(samplerShadowDepth, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	GLU samplerShadowPCF;
+	glCreateSamplers(1, &samplerShadowPCF);
+	glSamplerParameteri(samplerShadowPCF, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+	glSamplerParameteri(samplerShadowPCF, GL_TEXTURE_COMPARE_FUNC, GL_GEQUAL);
+	glSamplerParameteri(samplerShadowPCF, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glSamplerParameteri(samplerShadowPCF, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 	// CSM invariants
 	// --------------
 	const std::array<F32, g_kNumCascades + 1> aVsLimitsCascade = CalculateVsLimitsCascade(1, 1000);
@@ -262,6 +273,9 @@ I32 main()
 			};
 			
 			glBindTextureUnit(0, bufDepthShadow);
+			glBindTextureUnit(6, bufDepthShadow);
+			glBindSampler(0, samplerShadowPCF);
+			glBindSampler(6, samplerShadowDepth);
 			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
 				glBindSampler(i, samplerAniso);
 			glBindTextureUnit(5, bufRandomAngles); // lack of sampler is intentional
@@ -282,11 +296,11 @@ I32 main()
 				shader.SetMat4("ReferenceShadowMatrix", referenceMatrix);
 				shader.SetVec3Arr("AScaleCascade", aScaleCascade.data(), aScaleCascade.size());
 				shader.SetVec3Arr("AOffsetCascade", aOffsetCascade.data(), aOffsetCascade.size());
-				
+				shader.SetFloat("WidthLight", g_widthLight);
+
 				shader.SetFloat("Bias", g_bias);
 				shader.SetFloat("ScaleNormalOffsetBias", g_scaleNormalOffsetBias);
 				shader.SetFloat("SizeFilter", g_sizeFilter);
-				shader.SetInt("NumDiscSamples", g_numDiscSamples);
 				shader.SetVec3Arr("AWsPointLightPosition", aWsPointLightPosition.data(), aWsPointLightPosition.size());
 				shader.SetVec3Arr("APointLightColor", aLightColor.data(), aLightColor.size());
 			};
@@ -310,12 +324,9 @@ I32 main()
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glClear(GL_DEPTH_BUFFER_BIT);
 
-			// OGL complains about wrong sampler state 
-			// related to depth compare if I don't bind shadow map whether g_debug is true or false
-			// (in shader it's used only if true), so I just bind it.
-			glBindTextureUnit(2, bufDepthShadow);
-
 			if (g_debug) {
+				glBindTextureUnit(2, bufDepthShadow);
+				glBindSampler(2, samplerShadowDepth);
 				passExposureToneGamma.SetUInt("IdxCascade", g_debugCascadeIdx);
 			} else {
 				glBindTextureUnit(0, bufColor);
@@ -469,20 +480,14 @@ void CallbackKeyboard(GLFWwindow* window, I32 key, I32 scancode, I32 action, I32
 	if (key == GLFW_KEY_N && action == GLFW_PRESS) {
 		g_normalMapping = !g_normalMapping;
 	}
-
-	if (key == GLFW_KEY_O && action == GLFW_PRESS) {
-		g_numDiscSamples--;
-	}
-	if (key == GLFW_KEY_P && action == GLFW_PRESS) {
-		g_numDiscSamples++;
-	}
-	g_numDiscSamples = glm::clamp<I32>(g_numDiscSamples, 1, 24);
 }
 
 void CallbackMessage(GLE source, GLE type, GLU id, GLE severity, GLS length,
 	const GLC* message, const void* userParam)
 {
 	if (type == 0x8251) // silence message about static draw
+		return;
+	if (type == 0x824e) // warning about undefined behaviour that shadow map is simultaneously used with and without PCF, it works on NVidia and AMD anyway
 		return;
 	fprintf(stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
 		(type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""),
@@ -534,6 +539,12 @@ void ProcessInput(GLFWwindow* window, F32 deltaTime)
 	if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
 		g_sizeFilter += 0.1f;
 	g_sizeFilter = glm::clamp(g_sizeFilter, 1.f, 200.f);
+
+	if (glfwGetKey(window, GLFW_KEY_COMMA) == GLFW_PRESS)
+		g_widthLight -= 20;
+	if (glfwGetKey(window, GLFW_KEY_PERIOD) == GLFW_PRESS)
+		g_widthLight += 20;
+	g_widthLight = glm::clamp(g_widthLight, 0.1f, 200000.f);
 }
 
 // renders a quad over whole image

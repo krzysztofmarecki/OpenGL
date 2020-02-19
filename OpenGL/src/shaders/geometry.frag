@@ -12,7 +12,7 @@ in VS_OUT {
 	float VsDepth;
 } Input;
 
-layout (binding = 0) uniform sampler2DArrayShadow ShadowMapArray;
+layout (binding = 0) uniform sampler2DArrayShadow ShadowMapArrayPCF;
 layout (binding = 1) uniform sampler2D Diffuse;
 layout (binding = 2) uniform sampler2D Specular;
 layout (binding = 3) uniform sampler2D Normal;
@@ -20,6 +20,7 @@ layout (binding = 3) uniform sampler2D Normal;
 layout (binding = 4) uniform sampler2D Mask;
 #endif
 layout (binding = 5) uniform sampler3D RandomRotations;
+layout (binding = 6) uniform sampler2DArray ShadowMapArrayDepth;
 // point lights
 uniform vec3 AWsPointLightPosition[g_kNumPointLights];
 uniform vec3 APointLightColor[g_kNumPointLights];
@@ -36,7 +37,8 @@ uniform float Bias;
 uniform float ScaleNormalOffsetBias;
 // poisson disc PCF
 uniform float SizeFilter;
-uniform int NumDiscSamples;
+// PCSS
+uniform float WidthLight;
 
 uniform vec3 WsPosCamera;
 
@@ -52,31 +54,40 @@ const float W[g_kSizeKernel][g_kSizeKernel] =
     { 0.0,0.5,1.0,0.5,0.0 }
 };
 // samples sorted ascending by distance from center (0, 0)
-const vec2 SortedPoissonDisc[24] = {
-	vec2(-0.0730308, -0.0837733),
-	vec2(-0.170629, 0.341044),
-	vec2(0.370098, 0.199377),
-	vec2(0.281167, -0.34373),
-	vec2(-0.170568, -0.530625),
-	vec2(-0.564257, -0.168859),
-	vec2(0.169286, 0.578539),
-	vec2(0.598559, -0.123753),
-	vec2(-0.611744, 0.186621),
-	vec2(-0.118259, 0.696219),
-	vec2(-0.520554, 0.510849),
-	vec2(0.425581, -0.732536),
-	vec2(0.705985, 0.517258),
-	vec2(0.923276, 0.135228),
-	vec2(0.924314, -0.167028),
-	vec2(0.434187, 0.853633),
-	vec2(0.066744, -0.955687),
-	vec2(-0.880551, 0.386151),
-	vec2(-0.974242, -0.051912),
-	vec2(0.019013, 0.97937),
-	vec2(0.806024, -0.558519),
-	vec2(-0.865108, -0.467513),
-	vec2(-0.391278, 0.903195),
-	vec2(-0.582202, -0.799799),
+const uint g_kSizePoisson = 32;
+const vec2 SortedPoissonDisc[g_kSizePoisson] = {
+	vec2(0.019011, -0.0928373),
+	vec2(-0.189721, 0.0481687),
+	vec2(0.181187, 0.149785),
+	vec2(-0.0531117, 0.29442),
+	vec2(0.0851506, -0.340595),
+	vec2(-0.37324, -0.137516),
+	vec2(0.434441, 0.128121),
+	vec2(0.438754, -0.184647),
+	vec2(0.349801, 0.407084),
+	vec2(-0.458739, 0.289613),
+	vec2(-0.328096, -0.454847),
+	vec2(0.119188, 0.553902),
+	vec2(0.411564, -0.472634),
+	vec2(-0.549024, -0.33047),
+	vec2(0.646792, -0.0219359),
+	vec2(0.659172, 0.244447),
+	vec2(0.111437, -0.694744),
+	vec2(-0.699748, -0.0931278),
+	vec2(-0.339735, 0.679216),
+	vec2(-0.0264158, 0.769471),
+	vec2(-0.735643, 0.411438),
+	vec2(-0.618804, -0.596067),
+	vec2(-0.809374, -0.348468),
+	vec2(0.379034, -0.798338),
+	vec2(0.610946, -0.645543),
+	vec2(0.827083, -0.372629),
+	vec2(-0.909334, 0.0797359),
+	vec2(0.914577, 0.0385836),
+	vec2(-0.03774, -0.934691),
+	vec2(0.881333, 0.370912),
+	vec2(0.637645, 0.712983),
+	vec2(-0.351559, -0.895871),
 };
 
 // Blinn-Phong
@@ -116,7 +127,7 @@ Foo PointLight(vec3 wsNormal, vec3 wsPos, vec3 wsPosLight, vec3 colorLight, vec3
 // from "Fast Conventional Shadow Filtering" by Holger Gruen, in GPU Pro.
 //-------------------------------------------------------------------------------------------------
 float SampleShadowMapFixedSizePCF(vec3 uvz, uint idxCascade) {
-	const vec2 sizeShadowMap = textureSize(ShadowMapArray, 0).xy;
+	const vec2 sizeShadowMap = textureSize(ShadowMapArrayPCF, 0).xy;
     const float depth = uvz.z + Bias;
     vec2 tc = uvz.xy;
 
@@ -154,7 +165,7 @@ float SampleShadowMapFixedSizePCF(vec3 uvz, uint idxCascade) {
 					value += W[row + KS_2 - 1][col + KS_2 - 1];
             } // if(row > -KS_2)
 			if(value != 0.0f)
-				v1[(col + KS_2) / 2] = textureGatherOffset(ShadowMapArray, vec3(tc.xy, idxCascade), depth, ivec2(col, row));
+				v1[(col + KS_2) / 2] = textureGatherOffset(ShadowMapArrayPCF, vec3(tc.xy, idxCascade), depth, ivec2(col, row));
             else
 				v1[(col + KS_2) / 2] = vec4(0.0f);
 			
@@ -228,12 +239,13 @@ float SampleShadowMapFixedSizePCF(vec3 uvz, uint idxCascade) {
 	return dot(s, vec4(1.0f)) / w;
 }
 
-//--------------------------------------------------------------------------------------
-// Samples the shadow map using a PCF kernel made up from random points on a disc
-//--------------------------------------------------------------------------------------
-float SampleShadowMapRandomDiscPCF(vec3 uvz, uint idxCascade, vec3 wsPos) {
+float PenumbraRadius(float depthReceiver, float depthBlocker, float widthLight) {
+    return -widthLight * (depthReceiver - depthBlocker) / depthBlocker; // "-" because of reverse z
+}
+
+float SampleShadowMapRandomDiscPCFPCSS(vec3 uvz, uint idxCascade, vec3 wsPos, float widthLight) {
 	const vec2 sizeFilter = SizeFilter.xx * abs(AScaleCascade[idxCascade].xy);
-	const vec2 sizeShadowMap = textureSize(ShadowMapArray, 0).xy;
+	const vec2 sizeShadowMap = textureSize(ShadowMapArrayPCF, 0).xy;
     const float depth = uvz.z + Bias;
 
 	float result;
@@ -246,15 +258,40 @@ float SampleShadowMapRandomDiscPCF(vec3 uvz, uint idxCascade, vec3 wsPos) {
 												   vec2(sin(radAngle),  cos(radAngle)));
 		const vec2 scaleSample = 0.5 * sizeFilter / sizeShadowMap;
 
-		float sum = 0.0f;
-		for(int i = 0; i < NumDiscSamples; ++i) {
+		// blocker search
+		float depthOccluderAverage = 0;
+		int numOcluderSamples = 0;
+		for (int i = 0; i < g_kSizePoisson; ++i) {
 			const vec2 offsetSample = (randomRotationMatrix * SortedPoissonDisc[i]) * scaleSample;
 			const vec2 posSample = uvz.xy + offsetSample;
-			sum += texture(ShadowMapArray, vec4(posSample, idxCascade, depth));
+			float depthSample = texture(ShadowMapArrayDepth, vec3(posSample, idxCascade)).r;
+			if (depthSample > depth) {
+				depthOccluderAverage += depthSample;
+				++numOcluderSamples;
+			}
+		}
+
+		// early stop
+		if (numOcluderSamples == 0)
+			return 1;
+		else if (numOcluderSamples == g_kSizePoisson)
+			return 0;
+
+		// determine number of samples for PCF
+		depthOccluderAverage /= numOcluderSamples;
+		const float penumbraRadius = PenumbraRadius(depth, depthOccluderAverage, widthLight);
+		const int numSamples = int(clamp(penumbraRadius, 8, g_kSizePoisson));
+
+		// PCF
+		float sum = 0.0f;
+		for(int i = 0; i < numSamples; ++i) {
+			const vec2 offsetSample = (randomRotationMatrix * SortedPoissonDisc[i]) * scaleSample;
+			const vec2 posSample = uvz.xy + offsetSample;
+			sum += texture(ShadowMapArrayPCF, vec4(posSample, idxCascade, depth));
         }
-		result = sum / NumDiscSamples;
+		result = sum / numSamples;
     } else {
-		result = texture(ShadowMapArray, vec4(uvz.xy, idxCascade, depth));
+		result = texture(ShadowMapArrayPCF, vec4(uvz.xy, idxCascade, depth));
 	}
 	
 	return result;
@@ -262,25 +299,25 @@ float SampleShadowMapRandomDiscPCF(vec3 uvz, uint idxCascade, vec3 wsPos) {
 //-------------------------------------------------------------------------------------------------
 // Samples the appropriate shadow map cascade
 //-------------------------------------------------------------------------------------------------
-float SampleShadowCascade(vec3 uvz, uint idxCascade, vec3 wsPos)
+float SampleShadowCascade(vec3 uvz, uint idxCascade, vec3 wsPos, float widthLight)
 {
     uvz += AOffsetCascade[idxCascade].xyz;
     uvz *= AScaleCascade[idxCascade].xyz;
 
     //return SampleShadowMapFixedSizePCF(uvz, idxCascade);
-	return SampleShadowMapRandomDiscPCF(uvz, idxCascade, wsPos);
+	return SampleShadowMapRandomDiscPCFPCSS(uvz, idxCascade, wsPos, widthLight);
 }
 //-------------------------------------------------------------------------------------------------
 // Calculates the offset to use for sampling the shadow map, based on the surface normal
 //-------------------------------------------------------------------------------------------------
 vec3 GetWsShadowPosOffset(float nDotL, vec3 wsNormal)
 {
-    const float sizeTexel = 2.0f / textureSize(ShadowMapArray, 0).x;
+    const float sizeTexel = 2.0f / textureSize(ShadowMapArrayPCF, 0).x;
     const float nmlOffsetScale = 1.0f - nDotL;
     return sizeTexel * ScaleNormalOffsetBias * nmlOffsetScale * wsNormal;
 }
 
-float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal)
+float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal, float widthLight)
 {
     const vec3 projectionShadowPos = (ReferenceShadowMatrix * vec4(wsPos, 1.0f)).xyz;
 	
@@ -297,7 +334,7 @@ float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal)
 
     const vec3 wsPosOffset = GetWsShadowPosOffset(nDotL, wsNormal);
 	const vec3 uvz = (ReferenceShadowMatrix * vec4(wsPos + wsPosOffset, 1.0f)).xyz;
-	float shadowVisibility = SampleShadowCascade(uvz, idxCascade, wsPos);
+	float shadowVisibility = SampleShadowCascade(uvz, idxCascade, wsPos, widthLight);
 	
 	// Sample the next cascade, and blend between the two results to smooth the transition
 	const float kBlendThreshold = 0.2f;
@@ -313,20 +350,20 @@ float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal)
 	fadeFactor = max(distToEdge, fadeFactor);
 	
 	if(fadeFactor <= kBlendThreshold && idxCascade != (g_kNumCascades - 1)) {
-		const float nextSplitShadowVisibility = SampleShadowCascade(uvz, idxCascade + 1, wsPos);
+		const float nextSplitShadowVisibility = SampleShadowCascade(uvz, idxCascade + 1, wsPos, widthLight);
 		const float mixAmt = smoothstep(0.0f, kBlendThreshold, fadeFactor);
 		shadowVisibility = mix(nextSplitShadowVisibility, shadowVisibility, mixAmt);
     }
 	return shadowVisibility;
 }
 
-Foo DirrLight(vec3 wsNormal, vec3 wsPos, float vdDepth, vec3 colorLight, vec3 wsDirLight, vec3 diffColor, vec2 uv) {
+Foo DirrLight(vec3 wsNormal, vec3 wsPos, float vdDepth, vec3 colorLight, vec3 wsDirLight, vec3 diffColor, vec2 uv, float widthLight) {
 	const float nDotL = max(dot(wsNormal, wsDirLight), 0);
 	const vec3 colorPureDiffuse = nDotL * colorLight;
 	const vec3 diffuse = colorPureDiffuse * diffColor;
 	const vec3 specular = Spec(wsNormal, wsPos, colorLight, wsDirLight) * texture(Specular, uv).r;
 	
-	const float lightning = ShadowVisibility(wsPos, vdDepth, nDotL, wsNormal);
+	const float lightning = ShadowVisibility(wsPos, vdDepth, nDotL, wsNormal, widthLight);
 	return Foo(lightning * colorPureDiffuse, lightning * (diffuse + specular));
 }
 
@@ -355,7 +392,7 @@ void main() {
 	vec3 color = vec3(0);
 	vec3 colorPureDiffuse = vec3(0);
 	// dir light
-	Foo tempSun = DirrLight(wsNormal, Input.WsPos, vsDepth, ColorDirLight, WsDirLight, colorDiffuse, Input.UV);
+	Foo tempSun = DirrLight(wsNormal, Input.WsPos, vsDepth, ColorDirLight, WsDirLight, colorDiffuse, Input.UV, WidthLight);
 	color += tempSun.color;
 	colorPureDiffuse += tempSun.colorPureDiffuse;
 

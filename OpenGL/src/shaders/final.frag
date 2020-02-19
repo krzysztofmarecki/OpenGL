@@ -5,7 +5,7 @@ in vec2 UV;
 
 layout(binding = 0) uniform sampler2D ColorHDR;
 layout(binding = 1) uniform sampler2D DiffuseLight;
-layout(binding = 2) uniform sampler2DArrayShadow ShadowMapArray;
+layout(binding = 2) uniform sampler2DArray ShadowMapArray;
 uniform float Exposure;
 uniform bool Debug;
 uniform uint IdxCascade;
@@ -41,7 +41,7 @@ void main() {
 	
 		outColor = vec4(colorHDR, 1);
 	} else {
-		const vec3 color = texture(ShadowMapArray, vec4(UV, IdxCascade, 0)).rrr;
+		const vec3 color = texture(ShadowMapArray, vec3(UV, IdxCascade)).rrr;
 		outColor = vec4(color, 1);
 	}
 }
