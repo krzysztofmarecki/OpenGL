@@ -2,7 +2,6 @@
 #include "types.h"
 
 #include <string>	// std::string
-#include <iostream> // std::cout
 
 class Shader
 {
@@ -20,82 +19,78 @@ public:
 	// utility uniform functions
 	// ------------------------------------------------------------------------
 	void SetBool(const std::string &name, Bool value) const {
-		glProgramUniform1i(m_id, getUniformLocation(name), (GLI)value);
-		isUniformDefined(name);
+		glProgramUniform1i(m_id, GetUniformLocation(name), (GLI)value);
+		IsUniformDefined(name);
 	}
 
 	void SetInt(const std::string &name, GLI value) const {
-		glProgramUniform1i(m_id, getUniformLocation(name), value);
-		isUniformDefined(name);
+		glProgramUniform1i(m_id, GetUniformLocation(name), value);
+		IsUniformDefined(name);
 	}
 	void SetUInt(const std::string& name, GLU value) const {
-		glProgramUniform1ui(m_id, getUniformLocation(name), value);
-		isUniformDefined(name);
+		glProgramUniform1ui(m_id, GetUniformLocation(name), value);
+		IsUniformDefined(name);
 	}
 	void SetFloat(const std::string &name, GLF value) const {
-		glProgramUniform1f(m_id, getUniformLocation(name), value);
-		isUniformDefined(name);
+		glProgramUniform1f(m_id, GetUniformLocation(name), value);
+		IsUniformDefined(name);
 	}
 	void SetFloatArr(const std::string& name, const GLF* vals, const GLS count) const {
-		glProgramUniform1fv(m_id, getUniformLocation(name), count, vals);
-		isUniformDefined(name);
+		glProgramUniform1fv(m_id, GetUniformLocation(name), count, vals);
+		IsUniformDefined(name);
 	}
 
 	void SetVec2(const std::string &name, const Vec2 &value) const {
-		glProgramUniform2fv(m_id, getUniformLocation(name), 1, &value[0]);
-		isUniformDefined(name);
+		glProgramUniform2fv(m_id, GetUniformLocation(name), 1, &value[0]);
+		IsUniformDefined(name);
 	}
 
 	void SetVec3(const std::string &name, const Vec3 &value) const {
-		glProgramUniform3fv(m_id, getUniformLocation(name), 1, &value[0]);
-		isUniformDefined(name);
+		glProgramUniform3fv(m_id, GetUniformLocation(name), 1, &value[0]);
+		IsUniformDefined(name);
 	}
 
 	void SetVec4(const std::string &name, const Vec4 &value) const {
-		glProgramUniform4fv(m_id, getUniformLocation(name), 1, &value[0]);
-		isUniformDefined(name);
+		glProgramUniform4fv(m_id, GetUniformLocation(name), 1, &value[0]);
+		IsUniformDefined(name);
 	}
 
 	void SetMat2(const std::string &name, const Mat2 &mat) const {
-		glProgramUniformMatrix2fv(m_id, getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
-		isUniformDefined(name);
+		glProgramUniformMatrix2fv(m_id, GetUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
+		IsUniformDefined(name);
 	}
 
 	void SetMat3(const std::string &name, const Mat3 &mat) const {
-		glProgramUniformMatrix3fv(m_id, getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
-		isUniformDefined(name);
+		glProgramUniformMatrix3fv(m_id, GetUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
+		IsUniformDefined(name);
 	}
 
 	void SetMat4(const std::string &name, const Mat4 &mat) const {
-		glProgramUniformMatrix4fv(m_id, getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
-		isUniformDefined(name);
+		glProgramUniformMatrix4fv(m_id, GetUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
+		IsUniformDefined(name);
 	}
 
 	void SetVec3Arr(const std::string& name, const Vec3* vals, const GLS count) const {
-		glProgramUniform3fv(m_id, getUniformLocation(name), count, &((*vals)[0]));
-		isUniformDefined(name);
+		glProgramUniform3fv(m_id, GetUniformLocation(name), count, &((*vals)[0]));
+		IsUniformDefined(name);
 	}
 
 	void SetVec4Arr(const std::string& name, const Vec4* vals, const GLS count) const {
-		glProgramUniform4fv(m_id, getUniformLocation(name), count, &((*vals)[0]));
-		isUniformDefined(name);
+		glProgramUniform4fv(m_id, GetUniformLocation(name), count, &((*vals)[0]));
+		IsUniformDefined(name);
 	}
 
-	void setMat4Arr(const std::string& name, const Mat4* mats, GLS count) const {
-		glProgramUniformMatrix4fv(m_id, getUniformLocation(name), count, GL_FALSE, &(*mats)[0][0]);
-		isUniformDefined(name);
+	void SetMat4Arr(const std::string& name, const Mat4* mats, GLS count) const {
+		glProgramUniformMatrix4fv(m_id, GetUniformLocation(name), count, GL_FALSE, &(*mats)[0][0]);
+		IsUniformDefined(name);
 	}
 
 private:
-	GLI getUniformLocation(const std::string& name) const {
+	GLI GetUniformLocation(const std::string& name) const {
 		return glGetUniformLocation(m_id, name.c_str());
 	}
 
-	void isUniformDefined(const std::string& name) const
-	{
-		if (glGetUniformLocation(m_id, name.c_str()) == -1)
-			std::cout << "WARNING! uniform \t'" << name << " not found\n";
-	}
+	void IsUniformDefined(const std::string& name) const;
 
 	GLU m_id;
 };

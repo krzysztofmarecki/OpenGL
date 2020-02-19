@@ -1,11 +1,11 @@
 #include "Shader.h"
 
+#include <iostream> // std::cout
 #include <fstream>	// std::ifstream
 #include <sstream>  // std::stringstream
 #include <assert.h> // assert
 
-void checkCompileErrors(const GLU shaderName, const std::string shaderTypeName)
-{
+void CheckCompileErrors(const GLU shaderName, const std::string shaderTypeName) {
 	GLI success;
 	GLC infoLog[1024];
 	if (shaderTypeName == "PROGRAM") {
@@ -27,8 +27,7 @@ void checkCompileErrors(const GLU shaderName, const std::string shaderTypeName)
 	
 }
 
-GLint createCompileShader(const std::string& rPathShader, const GLE shaderType, const char* defines = nullptr)
-{
+GLint CreateCompileShader(const std::string& rPathShader, const GLE shaderType, const char* defines = nullptr) {
 	const std::ifstream shaderFile(rPathShader, std::ios::in);
 	assert(shaderFile.is_open());
 
@@ -52,26 +51,25 @@ GLint createCompileShader(const std::string& rPathShader, const GLE shaderType, 
 	glShaderSource(shaderName, 1, &shaderCodeCstr, nullptr);
 	glCompileShader(shaderName);
 	if (shaderType == GL_VERTEX_SHADER)
-		checkCompileErrors(shaderName, "VERTEX");
+		CheckCompileErrors(shaderName, "VERTEX");
 	else if (shaderType == GL_FRAGMENT_SHADER)
-		checkCompileErrors(shaderName, "FRAGMENT");
+		CheckCompileErrors(shaderName, "FRAGMENT");
 	else if (shaderType == GL_GEOMETRY_SHADER)
-		checkCompileErrors(shaderName, "GEOMETRY");
+		CheckCompileErrors(shaderName, "GEOMETRY");
 	else if (shaderType == GL_COMPUTE_SHADER)
-		checkCompileErrors(shaderName, "COMPUTE");
+		CheckCompileErrors(shaderName, "COMPUTE");
 	else
 		assert(false && "WRONG SHADER TYPE!");
 	return shaderName;
 }
 
-Shader::Shader(const std::string& rPathVs, const std::string& rPathFs, const std::string& rPathGs, const char* defines)
-{
+Shader::Shader(const std::string& rPathVs, const std::string& rPathFs, const std::string& rPathGs, const char* defines) {
 	const bool hasGS = (rPathGs.empty()) ? false : true;
 
-	const GLI  shaderNameVertex	  = createCompileShader(rPathVs, GL_VERTEX_SHADER, defines);
-	const GLI  shaderNameFragment = createCompileShader(rPathFs, GL_FRAGMENT_SHADER, defines);
+	const GLI  shaderNameVertex	  = CreateCompileShader(rPathVs, GL_VERTEX_SHADER, defines);
+	const GLI  shaderNameFragment = CreateCompileShader(rPathFs, GL_FRAGMENT_SHADER, defines);
 	GLI shaderNameGeometry;
-	if (hasGS) shaderNameGeometry = createCompileShader(rPathGs, GL_GEOMETRY_SHADER, defines);
+	if (hasGS) shaderNameGeometry = CreateCompileShader(rPathGs, GL_GEOMETRY_SHADER, defines);
 	
 	m_id = glCreateProgram();
 	glAttachShader(m_id, shaderNameVertex);
@@ -79,7 +77,7 @@ Shader::Shader(const std::string& rPathVs, const std::string& rPathFs, const std
 	if (hasGS)
 		glAttachShader(m_id, shaderNameGeometry);
 	glLinkProgram(m_id);
-	checkCompileErrors(m_id, "PROGRAM");
+	CheckCompileErrors(m_id, "PROGRAM");
 
 	glDeleteShader(shaderNameVertex);
 	glDeleteShader(shaderNameFragment);
@@ -87,13 +85,17 @@ Shader::Shader(const std::string& rPathVs, const std::string& rPathFs, const std
 		glDeleteShader(shaderNameGeometry);
 }
 
-Shader::Shader(const std::string& rPathCs)
-{
-	const GLI shaderNameCompute = createCompileShader(rPathCs, GL_COMPUTE_SHADER);
+Shader::Shader(const std::string& rPathCs) {
+	const GLI shaderNameCompute = CreateCompileShader(rPathCs, GL_COMPUTE_SHADER);
 
 	m_id = glCreateProgram();
 	glAttachShader(m_id, shaderNameCompute);
 	glLinkProgram(m_id);
-	checkCompileErrors(m_id, "PROGRAM");
+	CheckCompileErrors(m_id, "PROGRAM");
 	glDeleteShader(shaderNameCompute);
+}
+
+void Shader::IsUniformDefined(const std::string& name) const {
+	if (glGetUniformLocation(m_id, name.c_str()) == -1)
+		std::cout << "WARNING! uniform \t'" << name << " not found\n";
 }

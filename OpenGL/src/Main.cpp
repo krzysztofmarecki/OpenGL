@@ -13,7 +13,7 @@
 
 #include <array>						// std::array
 #include <random>						// std::random_device, std::mt19937, std::uniform_real_distribution
-
+#include <iostream>						// std::cout, fprintf
 // settings
 const U32 g_kWScreen = 1280;
 const U32 g_kHScreen = 720;
@@ -46,8 +46,7 @@ Vec3	g_wsPosSun(217, 265, -80);
 F32		g_sizeFilter = 15;
 F32		g_widthLight = 800;
 
-I32 main()
-{
+I32 main() {
 	// glfw: initialize and configure
 	// ------------------------------
 	glfwInit();
@@ -185,8 +184,7 @@ I32 main()
 
 	// render loop
 	// -----------
-	while (!glfwWindowShouldClose(window))
-	{
+	while (!glfwWindowShouldClose(window)) {
 		const F64 currentFrame = glfwGetTime();
 		const F64 deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
@@ -353,8 +351,7 @@ I32 main()
 	return 0;
 }
 
-std::array<Mat4, g_kNumCascades> CalculateCascadeViewProj(const std::array<F32, g_kNumCascades + 1> & aLimitCascade, const Camera & camera, const F32 sShadowMap, const Vec3 wsDirLight)
-{
+std::array<Mat4, g_kNumCascades> CalculateCascadeViewProj(const std::array<F32, g_kNumCascades + 1> & aLimitCascade, const Camera & camera, const F32 sShadowMap, const Vec3 wsDirLight) {
 	std::array<Mat4, g_kNumCascades> aViewProj;
 
 	const Mat4 invView = glm::inverse(camera.GetViewMatrix());
@@ -384,9 +381,9 @@ std::array<Mat4, g_kNumCascades> CalculateCascadeViewProj(const std::array<F32, 
 		};
 
 		// camera view space => world space
-		for (Vec4& pos : aFrustrumCorner) {
+		for (Vec4& pos : aFrustrumCorner)
 			pos = invView * pos;
-		}
+
 		// based on https://github.com/TheRealMJP/Shadows/blob/master/Shadows/MeshRenderer.cpp
 		Vec3 wsFrustrumCenter(0.f);
 		for (I32 j = 0; j < 8; j++)
@@ -471,15 +468,17 @@ void CallbackScroll(GLFWwindow* window, F64 xoffset, F64 yoffset) {
 }
 
 void CallbackKeyboard(GLFWwindow* window, I32 key, I32 scancode, I32 action, I32 mods) {
-	if (key == GLFW_KEY_G && action == GLFW_PRESS) {
+	if (action != GLFW_PRESS)
+		return;
+
+	if (key == GLFW_KEY_G)
 		g_debug = !g_debug;
-	}
-	if (key == GLFW_KEY_H && action == GLFW_PRESS) {
+
+	if (key == GLFW_KEY_H)
 		g_debugCascadeIdx = (g_debugCascadeIdx + 1) % g_kNumCascades;
-	}
-	if (key == GLFW_KEY_N && action == GLFW_PRESS) {
+
+	if (key == GLFW_KEY_N)
 		g_normalMapping = !g_normalMapping;
-	}
 }
 
 void CallbackMessage(GLE source, GLE type, GLU id, GLE severity, GLS length,
@@ -553,8 +552,7 @@ void RenderQuad()
 {
 	static GLU VAO = 0;
 	static GLU VBO;
-	if (VAO == 0)
-	{
+	if (VAO == 0) {
 		const F32 quadVertices[] = {
 			// x y z U V
 			-1,  1, 0, 0, 1,

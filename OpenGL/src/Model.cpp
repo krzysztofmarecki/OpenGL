@@ -12,6 +12,8 @@
 
 #include <unordered_map>		// std::unordered_map
 #include <filesystem>			// std::filesystem::path
+#include <iostream>				// std::cout
+
 using Path = std::filesystem::path;
 
 GLU TextureFromFile(const Path& directory, const char* pathRelativeFile);
@@ -23,14 +25,14 @@ struct OpaqueMaterial {
 	explicit OpaqueMaterial() = default;
 	explicit OpaqueMaterial(GLU d, GLU s, GLU n) : m_diffuse(d), m_specular(s), m_normal(n) {}
 };
+
 struct TransparentMaterial : OpaqueMaterial {
 	GLU m_mask = 0;
 	explicit TransparentMaterial() = default;
 	explicit TransparentMaterial(GLU d, GLU s, GLU n, GLU m) : OpaqueMaterial(d, s, n), m_mask(m) {}
 };
 
-Model::Model(std::string pathModel)
-{
+Model::Model(std::string pathModel) {
 	// load model
 	Assimp::Importer importer;
 	const std::string kPathFolderWithModels = "models/";
@@ -155,8 +157,7 @@ Model::Model(std::string pathModel)
 	}
 }
 
-GLU TextureFromFile(const Path& directory, const char* pathRelativeFile)
-{
+GLU TextureFromFile(const Path& directory, const char* pathRelativeFile) {
 	Path path(directory);
 	path.concat(pathRelativeFile);
 	char buffer[1024];
