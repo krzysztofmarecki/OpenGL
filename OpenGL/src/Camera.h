@@ -50,7 +50,7 @@ private:
 	
 	F32 m_movSpeed		= 50;
 	F32 m_mouseSens		= 0.1;
-	F32 m_degVertFOV	= 45;
+	F32 m_degVertFOV	= 57.5;
 };
 
 // from https://nlguillemot.wordpress.com/2016/12/07/reversed-z-in-opengl/
