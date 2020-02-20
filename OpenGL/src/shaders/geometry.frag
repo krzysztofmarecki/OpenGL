@@ -54,8 +54,8 @@ const float W[g_kSizeKernel][g_kSizeKernel] =
     { 0.0,0.5,1.0,0.5,0.0 }
 };
 // samples sorted ascending by distance from center (0, 0)
-const uint g_kSizePoisson = 32;
-const vec2 SortedPoissonDisc[g_kSizePoisson] = {
+const uint g_kSizeDisc = 32;
+const vec2 DiscPoissonSorted[g_kSizeDisc] = {
 	vec2(0.019011, -0.0928373),
 	vec2(-0.189721, 0.0481687),
 	vec2(0.181187, 0.149785),
@@ -89,6 +89,47 @@ const vec2 SortedPoissonDisc[g_kSizePoisson] = {
 	vec2(0.637645, 0.712983),
 	vec2(-0.351559, -0.895871),
 };
+
+const vec2 DiscVogelSorted[g_kSizeDisc] = {
+	vec2(0.125, 0),
+	vec2(-0.159645, 0.146248),
+	vec2(0.0244362, -0.278438),
+	vec2(0.201222, 0.262459),
+	vec2(-0.369268, -0.0653182),
+	vec2(0.349802, -0.222516),
+	vec2(-0.117002, 0.435242),
+	vec2(-0.223136, -0.429634),
+	vec2(0.484115, 0.176798),
+	vec2(-0.503641, 0.207896),
+	vec2(0.242788, -0.518825),
+	vec2(0.179414, 0.572001),
+	vec2(-0.540757, -0.31338),
+	vec2(0.634369, -0.139464),
+	vec2(-0.387146, 0.550675),
+	vec2(-0.0894396, -0.6902),
+	vec2(0.549072, 0.462758),
+	vec2(-0.738878, 0.0305549),
+	vec2(0.538955, -0.536332),
+	vec2(-0.0360582, 0.779792),
+	vec2(-0.512818, -0.614527),
+	vec2(0.81236, 0.109302),
+	vec2(-0.688311, 0.478909),
+	vec2(0.188086, -0.836061),
+	vec2(0.435033, 0.759191),
+	vec2(-0.850448, -0.271316),
+	vec2(0.826102, -0.38168),
+	vec2(-0.357888, 0.855155),
+	vec2(-0.319407, -0.888034),
+	vec2(0.849909, 0.446688),
+	vec2(-0.944035, 0.248845),
+	vec2(0.536596, -0.83453),
+};
+
+#ifndef POISSON
+	const vec2 DiscSorted[g_kSizeDisc] = DiscVogelSorted;
+#else
+	const vec2 DiscSorted[g_kSizeDisc] = DiscPoissonSorted;
+#endif
 
 // Blinn-Phong
 vec3 Spec(vec3 wsNormal, vec3 wsPos, vec3 colorLight, vec3 wsDirLight) {
@@ -261,8 +302,8 @@ float SampleShadowMapRandomDiscPCFPCSS(vec3 uvz, uint idxCascade, vec3 wsPos, fl
 		// blocker search
 		float depthOccluderAverage = 0;
 		int numOcluderSamples = 0;
-		for (int i = 0; i < g_kSizePoisson; ++i) {
-			const vec2 offsetSample = (randomRotationMatrix * SortedPoissonDisc[i]) * scaleSample;
+		for (int i = 0; i < g_kSizeDisc; ++i) {
+			const vec2 offsetSample = (randomRotationMatrix * DiscSorted[i]) * scaleSample;
 			const vec2 posSample = uvz.xy + offsetSample;
 			float depthSample = texture(ShadowMapArrayDepth, vec3(posSample, idxCascade)).r;
 			if (depthSample > depth) {
@@ -274,18 +315,18 @@ float SampleShadowMapRandomDiscPCFPCSS(vec3 uvz, uint idxCascade, vec3 wsPos, fl
 		// early stop
 		if (numOcluderSamples == 0)
 			return 1;
-		else if (numOcluderSamples == g_kSizePoisson)
+		else if (numOcluderSamples == g_kSizeDisc)
 			return 0;
 
 		// determine number of samples for PCF
 		depthOccluderAverage /= numOcluderSamples;
 		const float penumbraRadius = PenumbraRadius(depth, depthOccluderAverage, widthLight);
-		const int numSamples = int(clamp(penumbraRadius, 8, g_kSizePoisson));
+		const int numSamples = int(clamp(penumbraRadius, 8, g_kSizeDisc));
 
 		// PCF
 		float sum = 0.0f;
 		for(int i = 0; i < numSamples; ++i) {
-			const vec2 offsetSample = (randomRotationMatrix * SortedPoissonDisc[i]) * scaleSample;
+			const vec2 offsetSample = (randomRotationMatrix * DiscSorted[i]) * scaleSample;
 			const vec2 posSample = uvz.xy + offsetSample;
 			sum += texture(ShadowMapArrayPCF, vec4(posSample, idxCascade, depth));
         }

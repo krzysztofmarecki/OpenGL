@@ -2,15 +2,19 @@
 
 Various graphic effects implemented in OpenGL.
 
-![](https://i.ibb.co/BjsvhPt/Bez-tytu-u.png)
+![](https://i.ibb.co/fNvMXPs/Bez-tytu-u.png)
 
 #### Shadow mapping
 - PCF (2 modes)
-  - Poisson disc sampling
+  - Disc sampling
     - 16x16x16 3D texture of random rotations tiled in world space
+    - Vogel disc
+      - Produces smoother penumbra than Poisson disc
+      - Tiling is less visible than with Poisson disc
+      - Poisson disc as fallback option is available in shader
   - Optimized fixed texel size PCF kernel using GatherCmp &#42;
-- PCSS (only for Poisson disc sampling) &#42;&#42;
-  - Poisson-distrubuted taps are presorted by distance from the kernel center
+- PCSS (only for Disc sampling) &#42;&#42;
+  - Disc taps are presorted by distance from the kernel center
   - Use this kernel to estimate the average distance ratio
   - The amount of samples is reduced proportionally to the average distance ratio
     - This affects the radius of kernel, since the taps are sorted
