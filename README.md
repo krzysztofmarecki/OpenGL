@@ -27,7 +27,7 @@ Various graphic effects implemented in OpenGL.
   - hardcoded near and far (no bounding boxes)
 
 &#42; A Sampling of Shadow Techniques https://therealmjp.github.io/posts/shadow-maps/  
-&#42;&#42; Playing with Real-Time shadows  
+&#42;&#42; Playing with Real-Time Shadows https://www.realtimeshadows.com/sites/default/files/Playing%20with%20Real-Time%20Shadows_0.pdf
 #### Normal mapping
 - world space
 
