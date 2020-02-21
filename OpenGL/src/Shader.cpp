@@ -1,9 +1,10 @@
 #include "Shader.h"
 
-#include <iostream> // std::cout
-#include <fstream>	// std::ifstream
-#include <sstream>  // std::stringstream
-#include <assert.h> // assert
+#include <iostream>		// std::cout
+#include <fstream>		// std::ifstream
+#include <sstream>		// std::stringstream
+#include <assert.h>		// assert
+#include <filesystem>	// std::path
 
 void CheckCompileErrors(const GLU shaderName, const std::string shaderTypeName) {
 	GLI success;
@@ -27,17 +28,25 @@ void CheckCompileErrors(const GLU shaderName, const std::string shaderTypeName) 
 	
 }
 
-GLint CreateCompileShader(const std::string& rPathShader, const GLE shaderType, const char* defines = nullptr) {
-	const std::ifstream shaderFile(rPathShader, std::ios::in);
-	assert(shaderFile.is_open());
+std::string ReadFile(const std::string& rPathFile) {
+	const std::ifstream file(rPathFile, std::ios::in);
+	assert(file.is_open() && "CANNOT OPEN THE FILE!\n");
 
 	// read whole file
 	std::stringstream stream;
-	stream << shaderFile.rdbuf();
-	std::string shaderCode = stream.str();
+	stream << file.rdbuf();
+	return stream.str();
+}
+std::string ReadFile(const std::filesystem::path& rPathFile) {
+	return ReadFile(rPathFile.string());
+}
 
-	// insert defines between 1st (#version) and 2nd (rest) line of shader
+GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, const char* defines = nullptr) {
+	std::string shaderCode = ReadFile(rPathShader);
+
+	// handle "#define"
 	if (defines != nullptr) {
+		// Insert defines between 1st (#version) and 2nd (rest) line of shader.
 		// Find "#version", which must be 1st statement of shader due to GLSL standard.
 		// Empty lines can be above, so we search for 1st non empty line.
 		const Size posVersion = shaderCode.find("#version");
@@ -45,9 +54,32 @@ GLint CreateCompileShader(const std::string& rPathShader, const GLE shaderType, 
 		shaderCode.insert(posFirstNewLineAfterVersion + 1, defines);
 	}
 
-	//compile shader
+	// handle "#include"
+	const std::filesystem::path parentDirectiory = std::filesystem::path(rPathShader).parent_path();
+	Size posInclude = -1;
+	while ((posInclude = shaderCode.find("#include", posInclude + 1)) != shaderCode.npos) {
+		// get name of included file
+		Size posFirstQuote = shaderCode.find("\"", posInclude);
+		Size posSecondQuote = shaderCode.find("\"", posFirstQuote + 1);
+		std::string includedPathFile = shaderCode.substr(posFirstQuote + 1, posSecondQuote - (posFirstQuote + 1));
+
+		std::string includedShaderCode = ReadFile(parentDirectiory / includedPathFile);
+
+		// if any, remove "#version xyz" from included file
+		const Size includedPosVersion = includedShaderCode.find("#version");
+		const Size includedPosFirstNewLineAfterVersion = includedShaderCode.find("\n", includedPosVersion);
+		if (includedPosFirstNewLineAfterVersion != includedShaderCode.npos)
+			includedShaderCode.erase(includedPosVersion, includedPosFirstNewLineAfterVersion - includedPosVersion); // without +1, because we want to leave \n in case of "//?" at the begining of line, which can be useful with VS addon "GLSL language integration"  https://github.com/danielscherzer/GLSL 
+
+		// Remove "#include" from main file, so compiler don't complain.
+		// In that place paste included file.
+		shaderCode.erase(posInclude, posSecondQuote - posInclude + 1);
+		shaderCode.insert(posInclude, includedShaderCode);
+	}
+
+	// compile shader
 	const GLI shaderName = glCreateShader(shaderType);
-	const char* shaderCodeCstr = shaderCode.c_str();
+	const Char* shaderCodeCstr = shaderCode.c_str();
 	glShaderSource(shaderName, 1, &shaderCodeCstr, nullptr);
 	glCompileShader(shaderName);
 	if (shaderType == GL_VERTEX_SHADER)
