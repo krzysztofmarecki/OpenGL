@@ -73,5 +73,6 @@
     <None Include="src\shaders\shadow.frag">
       <Filter>Source Files\Shaders</Filter>
     </None>
+    <None Include="src\shaders\kernels.gl" />
   </ItemGroup>
 </Project>

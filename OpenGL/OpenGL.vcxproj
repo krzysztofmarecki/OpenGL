@@ -34,6 +34,7 @@
     <ClCompile Include="src\Shader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="src\shaders\kernels.gl" />
     <None Include="src\shaders\shadow.frag" />
     <None Include="src\shaders\final.frag" />
     <None Include="src\shaders\final.vert" />
