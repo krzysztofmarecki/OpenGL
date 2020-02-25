@@ -98,32 +98,32 @@ Model::Model(std::string pathModel) {
 		// preallocate
 		aVertex.reserve(rMesh.mNumVertices);
 		Size numberOfIndicies = 0;
-		for (unsigned i = 0; i < rMesh.mNumFaces; i++)
-			numberOfIndicies += rMesh.mFaces[i].mNumIndices;
+		for (unsigned j = 0; j < rMesh.mNumFaces; j++)
+			numberOfIndicies += rMesh.mFaces[j].mNumIndices;
 		aIndex.reserve(numberOfIndicies);
 
 		// process
-		for (unsigned i = 0; i < rMesh.mNumVertices; i++) {
+		for (unsigned j = 0; j < rMesh.mNumVertices; j++) {
 			Vertex vertex;
-			vertex.m_position = Vec3(rMesh.mVertices[i].x,
-				rMesh.mVertices[i].y,
-				rMesh.mVertices[i].z);
+			vertex.m_position = Vec3(rMesh.mVertices[j].x,
+				rMesh.mVertices[j].y,
+				rMesh.mVertices[j].z);
 
 			// take first set of UVs, ignore the rest
 			if (rMesh.HasTextureCoords(0))
-				vertex.m_uv = Vec2(rMesh.mTextureCoords[0][i].x, rMesh.mTextureCoords[0][i].y);
+				vertex.m_uv = Vec2(rMesh.mTextureCoords[0][j].x, rMesh.mTextureCoords[0][j].y);
 			else
 				vertex.m_uv = Vec2(0);
 
-			const Vec3 N(rMesh.mNormals[i].x,
-						 rMesh.mNormals[i].y,
-						 rMesh.mNormals[i].z);
-			Vec3 T	    (rMesh.mTangents[i].x,
-						 rMesh.mTangents[i].y,
-						 rMesh.mTangents[i].z);
-			const Vec3 B(rMesh.mBitangents[i].x,
-						 rMesh.mBitangents[i].y,
-						 rMesh.mBitangents[i].z);
+			const Vec3 N(rMesh.mNormals[j].x,
+						 rMesh.mNormals[j].y,
+						 rMesh.mNormals[j].z);
+			Vec3 T	    (rMesh.mTangents[j].x,
+						 rMesh.mTangents[j].y,
+						 rMesh.mTangents[j].z);
+			const Vec3 B(rMesh.mBitangents[j].x,
+						 rMesh.mBitangents[j].y,
+						 rMesh.mBitangents[j].z);
 
 			// on symetric models T sometimes gets messy, fix it
 			if (glm::dot(glm::cross(N, T), B) > 0)
@@ -133,13 +133,13 @@ Model::Model(std::string pathModel) {
 			vertex.m_tangent = T;
 			// on GPU we calculate bitangent with cross(N,T), hence, we dont need to save it
 			aVertex.push_back(vertex);
-		} // for (U32 i = 0; i < mesh->mNumVertices; i++)
+		} // for (U32 j = 0; j < mesh->mNumVertices; j++)
 
 		// process indices
-		for (unsigned i = 0; i < rMesh.mNumFaces; i++) {
-			aiFace face = rMesh.mFaces[i];
-			for (unsigned j = 0; j < face.mNumIndices; j++) {
-				aIndex.push_back(face.mIndices[j]);
+		for (unsigned j = 0; j < rMesh.mNumFaces; j++) {
+			aiFace face = rMesh.mFaces[j];
+			for (unsigned k = 0; k < face.mNumIndices; k++) {
+				aIndex.push_back(face.mIndices[k]);
 			}
 		}
 		// process material
