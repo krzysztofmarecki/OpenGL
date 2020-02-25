@@ -13,8 +13,7 @@ out VS_OUT {
 } Output;
 
 uniform mat4 Model;
-uniform mat4 Projection;
-uniform mat4 View;
+uniform mat4 ViewProj;
 uniform mat3 NormalMatrix;
 
 void main()
@@ -24,7 +23,6 @@ void main()
 	Output.WsNormal  = NormalMatrix*inNormal;
 	Output.WsTangent = NormalMatrix*inTangent;
     Output.UV = inUV;
-	pos = View * pos;
-	Output.VsDepth = pos.z;
-	gl_Position = Projection * pos;
+	gl_Position = ViewProj * pos;
+	Output.VsDepth = -gl_Position.w; // "-" because right handed coordinate system
 }

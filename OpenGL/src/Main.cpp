@@ -280,8 +280,7 @@ I32 main() {
 
 			auto SetUniformsGeoPass = [&](Shader& shader) {
 				shader.SetMat4("Model", modelSponza);
-				shader.SetMat4("Projection", projection);
-				shader.SetMat4("View", view);
+				shader.SetMat4("ViewProj", projection*view);
 				
 				shader.SetVec3("WsPosCamera", g_camera.GetWsPosition());
 
