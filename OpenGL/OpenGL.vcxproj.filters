@@ -73,6 +73,26 @@
     <None Include="src\shaders\shadow.frag">
       <Filter>Source Files\Shaders</Filter>
     </None>
-    <None Include="src\shaders\kernels.gl" />
+    <None Include="src\shaders\forward.frag">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\forward.vert">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\kernels.gl">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\shading.frag">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\lightning.gl">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\shadows.gl">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\normals.gl">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

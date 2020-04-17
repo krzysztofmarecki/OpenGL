@@ -85,44 +85,60 @@ I32 main() {
 	glEnable(GL_CULL_FACE);
 	glPolygonOffset(-2.5, -8);				// slope scale and constant depth bias for shadow map rendering
 	
-	// configure floating point framebuffer
-	// ------------------------------------
-	GLU fboHDR;
-	glCreateFramebuffers(1, &fboHDR);
+	// create textures for render targets
 	GLU bufColor;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufColor);
-	glTextureStorage2D(bufColor, 1, GL_RGB16F, g_kWScreen, g_kHScreen);
+	glTextureStorage2D(bufColor, 1, GL_RGBA16F, g_kWScreen, g_kHScreen); // not using A16F
 	GLU bufDiffuseLight;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufDiffuseLight);
 	glTextureStorage2D(bufDiffuseLight, log2f(std::max(g_kWScreen, g_kHScreen))+1, GL_R16F, g_kWScreen, g_kHScreen);
-	GLU attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
-	glNamedFramebufferDrawBuffers(fboHDR, 2, attachments);
+	GLU bufDiffuseSpec;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufDiffuseSpec);
+	glTextureStorage2D(bufDiffuseSpec, 1, GL_RGBA8, g_kWScreen, g_kHScreen);
+	GLU bufNormal;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufNormal);
+	glTextureStorage2D(bufNormal, 1, GL_RGB10_A2, g_kWScreen, g_kHScreen); // not using A2
 	GLU bufDepth;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufDepth);
 	glTextureStorage2D(bufDepth,1, GL_DEPTH_COMPONENT32F, g_kWScreen, g_kHScreen);
-	// attach buffers
-	glNamedFramebufferTexture(fboHDR, GL_COLOR_ATTACHMENT0, bufColor, 0);
-	glNamedFramebufferTexture(fboHDR, GL_COLOR_ATTACHMENT1, bufDiffuseLight, 0);
-	glNamedFramebufferTexture(fboHDR, GL_DEPTH_ATTACHMENT, bufDepth, 0);
+	
+	// create and configure framebuffers
+	// ----------------------
+	auto CreateConfigureFrameBuffer = [](GLU att0, GLU att1, GLU depth) {
+		const GLU attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+		GLU fbo;
+		glCreateFramebuffers(1, &fbo);
+		glNamedFramebufferDrawBuffers(fbo, 2, attachments);
+		glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0, att0, 0);
+		glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT1, att1, 0);
+		glNamedFramebufferTexture(fbo, GL_DEPTH_ATTACHMENT, depth, 0);
+		return fbo;
+	};
+
+	const GLU fboOpaque = CreateConfigureFrameBuffer(bufDiffuseSpec, bufNormal, bufDepth);
+	const GLU fboTransparent = CreateConfigureFrameBuffer(bufColor, bufDiffuseLight, bufDepth);
+
 	auto AssertFBOIsComplete = [](GLU fbo) {
 		if (glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 			assert(false && "Framebuffer not complete!\n");
 	};
-	AssertFBOIsComplete(fboHDR);
-	
+
+	AssertFBOIsComplete(fboOpaque);
+	AssertFBOIsComplete(fboTransparent);
+
 	// create framebuffer for CSM
 	// --------------------------
-	GLU fboShadowMap;
-	glCreateFramebuffers(1, &fboShadowMap);
-	
 	GLU bufDepthShadow;
 	GLS sShadowMap = 2048;
 	glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &bufDepthShadow);
 	glTextureStorage3D(bufDepthShadow, 1, GL_DEPTH_COMPONENT16, sShadowMap, sShadowMap, g_kNumCascades);
+	GLU fboShadowMap;
+	glCreateFramebuffers(1, &fboShadowMap);
 	glNamedFramebufferTexture(fboShadowMap, GL_COLOR_ATTACHMENT0, GL_NONE, 0);
 	glNamedFramebufferTextureLayer(fboShadowMap, GL_DEPTH_ATTACHMENT, bufDepthShadow, 0, 0);
 	AssertFBOIsComplete(fboShadowMap);
 	
+	// create samplers for shadow mapping
 	GLU samplerShadowDepth;
 	glCreateSamplers(1, &samplerShadowDepth);
 	glSamplerParameteri(samplerShadowDepth, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -170,7 +186,8 @@ I32 main() {
 	Shader passDirectShadow("src/shaders/shadow.vert", "src/shaders/shadow.frag");
 	Shader passDirectShadowTransp("src/shaders/shadow.vert", "src/shaders/shadow.frag", "", macroDefineTransparency);
 	Shader passGeometry("src/shaders/geometry.vert", "src/shaders/geometry.frag");
-	Shader passGeometryTransp("src/shaders/geometry.vert", "src/shaders/geometry.frag", "", macroDefineTransparency);
+	Shader passShading("src/shaders/final.vert", "src/shaders/shading.frag");
+	Shader passForward("src/shaders/forward.vert", "src/shaders/forward.frag", "", macroDefineTransparency);
 	Shader passExposureToneGamma("src/shaders/final.vert", "src/shaders/final.frag");
 
 	GLU samplerAniso;
@@ -247,15 +264,32 @@ I32 main() {
 			glDisable(GL_POLYGON_OFFSET_FILL);
 			glViewport(0, 0, g_kWScreen, g_kHScreen);
 		}
-		// forward pass, lightning + generate bufDiffuseLight with mipmaps
-		// ---------------------------------------------------------------
+		const float nearPlane = 0.1;
+		const Mat4 projection = CalculateInfReversedZProj(g_camera, (F32)g_kWScreen / (F32)g_kHScreen, nearPlane);
+		const Mat4 view = g_camera.GetViewMatrix();
+		auto SetUniformsBasics = [&](Shader& shader) {
+			shader.SetMat4("Model", modelSponza);
+			shader.SetMat4("ViewProj", projection * view);
+			shader.SetMat3("NormalMatrix", glm::transpose(glm::inverse(Mat3(modelSponza))));
+			shader.SetBool("NormalMapping", g_normalMapping);
+		};
+		// geometry pass for opaques
+		// ------------------------
 		{
-			glBindFramebuffer(GL_FRAMEBUFFER, fboHDR);
+			glBindFramebuffer(GL_FRAMEBUFFER, fboOpaque);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear color as well, because I don't render skybox
 
-			const Mat4 projection = CalculateInfReversedZProj(g_camera, (F32)g_kWScreen / (F32)g_kHScreen, 0.1f);
-			const Mat4 view = g_camera.GetViewMatrix();
-
+			passGeometry.Use();
+			SetUniformsBasics(passGeometry);
+			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
+				glBindSampler(i, samplerAniso);
+			sceneSponza.Draw();
+			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
+				glBindSampler(i, 0);
+		}
+		// deffered pass + forward pass for masked objects + generate mipmaps for bufDiffuseLight
+		// --------------------------------------------------------------------------------------
+		{
 			const U32 kNumPointLights = 4;
 			const std::array<Vec3, kNumPointLights> aWsPointLightPosition = {
 				Vec3(0, 10, 0),
@@ -269,24 +303,9 @@ I32 main() {
 				Vec3(500),
 				Vec3(500)
 			};
-			
-			glBindTextureUnit(0, bufDepthShadow);
-			glBindTextureUnit(6, bufDepthShadow);
-			glBindSampler(0, samplerShadowPCF);
-			glBindSampler(6, samplerShadowDepth);
-			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
-				glBindSampler(i, samplerAniso);
-			glBindTextureUnit(5, bufRandomAngles); // lack of sampler is intentional
-
-			auto SetUniformsGeoPass = [&](Shader& shader) {
-				shader.SetMat4("Model", modelSponza);
-				shader.SetMat4("ViewProj", projection*view);
-				
+			auto SetUniformsShadingPass = [&](Shader& shader) {
 				shader.SetVec3("WsPosCamera", g_camera.GetWsPosition());
 
-				shader.SetMat3("NormalMatrix", glm::transpose(glm::inverse(Mat3(modelSponza))));
-				shader.SetBool("NormalMapping", g_normalMapping);
-				
 				shader.SetVec3("WsDirLight", -wsDirLight);	// notice "-"
 				shader.SetVec3("ColorDirLight", Vec3(3));
 				shader.SetFloatArr("AVsFarCascade", aVsFarCascade.data(), g_kNumCascades);
@@ -301,18 +320,41 @@ I32 main() {
 				shader.SetVec3Arr("AWsPointLightPosition", aWsPointLightPosition.data(), aWsPointLightPosition.size());
 				shader.SetVec3Arr("APointLightColor", aLightColor.data(), aLightColor.size());
 			};
-
-			SetUniformsGeoPass(passGeometry);
-			passGeometry.Use();
-			sceneSponza.Draw();
+			glBindFramebuffer(GL_FRAMEBUFFER, fboTransparent);
 			
-			SetUniformsGeoPass(passGeometryTransp);
-			passGeometryTransp.Use();
+			// deffered
+			passShading.Use();
+			SetUniformsShadingPass(passShading);
+			passShading.SetMat4("InvViewProj", glm::inverse(projection * view));
+			passShading.SetFloat("Near", nearPlane);
+			glBindTextureUnit(0, bufDiffuseSpec);
+			glBindTextureUnit(1, bufNormal);
+			glBindTextureUnit(2, bufDepth);
+			glBindTextureUnit(3, bufDepthShadow);
+			glBindTextureUnit(4, bufDepthShadow);
+			glBindTextureUnit(5, bufRandomAngles); // lack of sampler is intentional
+			glBindSampler(3, samplerShadowPCF);
+			glBindSampler(4, samplerShadowDepth);
+			
+			glDisable(GL_DEPTH_TEST); // also disables depth writes
+			RenderQuad();
+			glEnable(GL_DEPTH_TEST);
+			
+			// forward
+			passForward.Use();
+			SetUniformsShadingPass(passForward);
+			SetUniformsBasics(passForward);
+			glBindTextureUnit(0, bufDepthShadow);
+			glBindTextureUnit(6, bufDepthShadow);
+			glBindSampler(0, samplerShadowPCF);
+			glBindSampler(6, samplerShadowDepth);
+			glBindTextureUnit(5, bufRandomAngles);
+			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
+				glBindSampler(i, samplerAniso);
 			sceneSponza.DrawTransp();
-
 			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
 				glBindSampler(i, 0);
-
+			
 			glGenerateTextureMipmap(bufDiffuseLight);
 		}
 		// final pass, apply exposure, tone mapping and gamma correction

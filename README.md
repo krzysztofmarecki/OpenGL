@@ -41,8 +41,14 @@ Various graphic effects implemented in OpenGL.
 - no lag
 
 #### Other
-- forward rendering
-- separate passes for alpha masked geometry
+- deferred shading for opaques
+- G-Buffer:
+  - RGBA8 - RGB diffuse, A specular
+  - RGB10A2 - RGB ws normals, A unused
+- Other RTs:
+  - R16F - log pure diffuse light
+  - RGBA16F - RGB final HDR RT, A unsused
+- forward rendering for alpha masked geometry
 - lightning model: Blinn-Phong
 
 ## Build Instructions
