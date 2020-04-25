@@ -53,6 +53,8 @@ I32 main() {
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_DEPTH_BITS, 0);
+	glfwWindowHint(GLFW_STENCIL_BITS, 0);
 	if constexpr (!g_kVSync)
 		glfwWindowHint(GLFW_DOUBLEBUFFER, GL_FALSE);
 	GLFWwindow* window = glfwCreateWindow(g_kWScreen, g_kHScreen, "LearnOpenGL", nullptr, nullptr);
@@ -361,7 +363,6 @@ I32 main() {
 		// -------------------------------------------------------------
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glClear(GL_DEPTH_BUFFER_BIT);
 
 			if (g_debug) {
 				glBindTextureUnit(2, bufDepthShadow);
