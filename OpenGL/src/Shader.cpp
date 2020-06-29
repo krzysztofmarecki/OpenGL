@@ -41,8 +41,20 @@ std::string ReadFile(const std::filesystem::path& rPathFile) {
 	return ReadFile(rPathFile.string());
 }
 
+std::string RemoveComments(std::string str) {
+	for (Size commentBegin = str.find("//"); commentBegin != str.npos; commentBegin = str.find("//", commentBegin)) {
+		const Size commentEnd = str.find("\n", commentBegin);
+		str.erase(commentBegin, commentEnd - commentBegin); // don't remove "\n"
+	}
+	for (Size commentBegin = str.find("/*"); commentBegin != str.npos; commentBegin = str.find("/*", commentBegin)) {
+		const Size commentEnd = str.find("*/", commentBegin);
+		str.erase(commentBegin, commentEnd - commentBegin + 2);
+	}
+	return str;
+}
+
 GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, std::string defines = "") {
-	std::string shaderCode = ReadFile(rPathShader);
+	std::string shaderCode = RemoveComments(ReadFile(rPathShader));
 
 	// handle "#define"
 	if (!defines.empty()) {
@@ -58,20 +70,20 @@ GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, st
 
 	// handle "#include"
 	const std::filesystem::path parentDirectiory = std::filesystem::path(rPathShader).parent_path();
-	Size posInclude = -1;
-	while ((posInclude = shaderCode.find("#include", posInclude + 1)) != shaderCode.npos) {
+	Size posInclude = 0;
+	while ((posInclude = shaderCode.find("#include", posInclude)) != shaderCode.npos) {
 		// get name of included file
 		const Size posFirstQuote = shaderCode.find("\"", posInclude);
 		const Size posSecondQuote = shaderCode.find("\"", posFirstQuote + 1);
 		const std::string includedPathFile = shaderCode.substr(posFirstQuote + 1, posSecondQuote - (posFirstQuote + 1));
 
-		std::string includedShaderCode = ReadFile(parentDirectiory / includedPathFile);
+		std::string includedShaderCode = RemoveComments(ReadFile(parentDirectiory / includedPathFile));
 
 		// if any, remove "#version xyz" from included file
 		const Size includedPosVersion = includedShaderCode.find("#version");
 		const Size includedPosFirstNewLineAfterVersion = includedShaderCode.find("\n", includedPosVersion);
 		if (includedPosFirstNewLineAfterVersion != includedShaderCode.npos)
-			includedShaderCode.erase(includedPosVersion, includedPosFirstNewLineAfterVersion - includedPosVersion); // without +1, because we want to leave \n in case of "//?" at the begining of line, which can be useful with VS addon "GLSL language integration"  https://github.com/danielscherzer/GLSL 
+			includedShaderCode.erase(includedPosVersion, includedPosFirstNewLineAfterVersion - includedPosVersion + 1);
 
 		// Remove "#include" from main file, so compiler don't complain.
 		// In that place paste included file.
