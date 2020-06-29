@@ -7,8 +7,7 @@ class Shader
 {
 public:
 	// graphic
-	Shader(const std::string& rPathVs, const std::string& rPathFs, const std::string& rPathGs = "", const char* defines = nullptr);
-
+	Shader(const std::string& rPathVs, const std::string& rPathFs, const std::string& rPathGs = "", const std::string& defines = "");
 	// compute
 	Shader(const std::string& rPathCs);
 	

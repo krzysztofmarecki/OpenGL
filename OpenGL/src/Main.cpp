@@ -184,7 +184,7 @@ I32 main() {
 
 	// Shaders
 	// -------
-	const Char* macroDefineTransparency = "#define TRANSPARENCY\n";
+	const std::string macroDefineTransparency = "#define TRANSPARENCY";
 	Shader passDirectShadow("src/shaders/shadow.vert", "src/shaders/shadow.frag");
 	Shader passDirectShadowTransp("src/shaders/shadow.vert", "src/shaders/shadow.frag", "", macroDefineTransparency);
 	Shader passGeometry("src/shaders/geometry.vert", "src/shaders/geometry.frag");

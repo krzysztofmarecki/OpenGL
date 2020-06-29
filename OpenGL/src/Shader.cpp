@@ -41,16 +41,18 @@ std::string ReadFile(const std::filesystem::path& rPathFile) {
 	return ReadFile(rPathFile.string());
 }
 
-GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, const char* defines = nullptr) {
+GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, std::string defines = "") {
 	std::string shaderCode = ReadFile(rPathShader);
 
 	// handle "#define"
-	if (defines != nullptr) {
+	if (!defines.empty()) {
 		// Insert defines between 1st (#version) and 2nd (rest) line of shader.
 		// Find "#version", which must be 1st statement of shader due to GLSL standard.
 		// Empty lines can be above, so we search for 1st non empty line.
 		const Size posVersion = shaderCode.find("#version");
 		const Size posFirstNewLineAfterVersion = shaderCode.find("\n", posVersion);
+		if (defines.back() != '\n')
+			defines.push_back('\n');
 		shaderCode.insert(posFirstNewLineAfterVersion + 1, defines);
 	}
 
@@ -59,9 +61,9 @@ GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, co
 	Size posInclude = -1;
 	while ((posInclude = shaderCode.find("#include", posInclude + 1)) != shaderCode.npos) {
 		// get name of included file
-		Size posFirstQuote = shaderCode.find("\"", posInclude);
-		Size posSecondQuote = shaderCode.find("\"", posFirstQuote + 1);
-		std::string includedPathFile = shaderCode.substr(posFirstQuote + 1, posSecondQuote - (posFirstQuote + 1));
+		const Size posFirstQuote = shaderCode.find("\"", posInclude);
+		const Size posSecondQuote = shaderCode.find("\"", posFirstQuote + 1);
+		const std::string includedPathFile = shaderCode.substr(posFirstQuote + 1, posSecondQuote - (posFirstQuote + 1));
 
 		std::string includedShaderCode = ReadFile(parentDirectiory / includedPathFile);
 
@@ -95,7 +97,7 @@ GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, co
 	return shaderName;
 }
 
-Shader::Shader(const std::string& rPathVs, const std::string& rPathFs, const std::string& rPathGs, const char* defines) {
+Shader::Shader(const std::string& rPathVs, const std::string& rPathFs, const std::string& rPathGs, const std::string& defines) {
 	const bool hasGS = (rPathGs.empty()) ? false : true;
 
 	const GLI  shaderNameVertex	  = CreateCompileShader(rPathVs, GL_VERTEX_SHADER, defines);
