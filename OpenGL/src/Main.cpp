@@ -14,6 +14,10 @@
 #include <array>						// std::array
 #include <random>						// std::random_device, std::mt19937, std::uniform_real_distribution
 #include <iostream>						// std::cout, fprintf
+
+#include "../models/AreaTex.h"			// SMAA
+#include "../models/SearchTex.h"		// SMAA
+
 // settings
 const U32 g_kWScreen = 1280;
 const U32 g_kHScreen = 720;
@@ -45,6 +49,7 @@ I32		g_debugCascadeIdx = 0;
 Vec3	g_wsPosSun(217, 265, -80);
 F32		g_sizeFilter = 15;
 F32		g_widthLight = 800;
+Bool	g_smaa = true;
 
 I32 main() {
 	// glfw: initialize and configure
@@ -88,9 +93,15 @@ I32 main() {
 	glPolygonOffset(-2.5, -8);				// slope scale and constant depth bias for shadow map rendering
 	
 	// create textures for render targets
-	GLU bufColor;
-	glCreateTextures(GL_TEXTURE_2D, 1, &bufColor);
-	glTextureStorage2D(bufColor, 1, GL_RGBA16F, g_kWScreen, g_kHScreen); // not using A16F
+	GLU bufHdr;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufHdr);
+	glTextureStorage2D(bufHdr, 1, GL_RGBA16F, g_kWScreen, g_kHScreen); // not using A16F
+	GLU bufLdr;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufLdr);
+	glTextureStorage2D(bufLdr, 1, GL_RGBA8, g_kWScreen, g_kHScreen); // not using A8
+	GLU bufLdrSrgb;
+	glGenTextures(1, &bufLdrSrgb);
+	glTextureView(bufLdrSrgb, GL_TEXTURE_2D, bufLdr, GL_SRGB8_ALPHA8, 0, 1, 0, 1);
 	GLU bufDiffuseLight;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufDiffuseLight);
 	glTextureStorage2D(bufDiffuseLight, log2f(std::max(g_kWScreen, g_kHScreen))+1, GL_R16F, g_kWScreen, g_kHScreen);
@@ -118,7 +129,11 @@ I32 main() {
 	};
 
 	const GLU fboOpaque = CreateConfigureFrameBuffer(bufDiffuseSpec, bufNormal, bufDepth);
-	const GLU fboTransparent = CreateConfigureFrameBuffer(bufColor, bufDiffuseLight, bufDepth);
+	const GLU fboTransparent = CreateConfigureFrameBuffer(bufHdr, bufDiffuseLight, bufDepth);
+	GLU fboBack;
+	glCreateFramebuffers(1, &fboBack);
+	glNamedFramebufferDrawBuffer(fboBack, GL_COLOR_ATTACHMENT0);
+	glNamedFramebufferTexture(fboBack, GL_COLOR_ATTACHMENT0, bufLdrSrgb, 0);
 
 	auto AssertFBOIsComplete = [](GLU fbo) {
 		if (glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -127,6 +142,7 @@ I32 main() {
 
 	AssertFBOIsComplete(fboOpaque);
 	AssertFBOIsComplete(fboTransparent);
+	AssertFBOIsComplete(fboBack);
 
 	// create framebuffer for CSM
 	// --------------------------
@@ -182,6 +198,41 @@ I32 main() {
 	glTextureStorage3D(bufRandomAngles, 1, GL_R16F, kSizeRandomAngle, kSizeRandomAngle, kSizeRandomAngle);
 	glTextureSubImage3D(bufRandomAngles, 0, 0, 0, 0, kSizeRandomAngle, kSizeRandomAngle, kSizeRandomAngle, GL_RED, GL_FLOAT, aRadRandomAngles.data());
 
+	// SMAA
+	// ----
+	GLU bufSmaaEdge;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaEdge);
+	glTextureStorage2D(bufSmaaEdge, 1, GL_RG8, g_kWScreen, g_kHScreen);
+	GLU bufSmaaBlend;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaBlend);
+	glTextureStorage2D(bufSmaaBlend, 1, GL_RGBA8, g_kWScreen, g_kHScreen);
+	GLU bufStencil;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufStencil);
+	glTextureStorage2D(bufStencil, 1, GL_STENCIL_INDEX8, g_kWScreen, g_kHScreen);
+
+	GLU fboSmaa;
+	glCreateFramebuffers(1, &fboSmaa);
+	glNamedFramebufferDrawBuffer(fboSmaa, GL_COLOR_ATTACHMENT0);
+	glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaEdge, 0);
+	glNamedFramebufferTexture(fboSmaa, GL_STENCIL_ATTACHMENT, bufStencil, 0);
+	AssertFBOIsComplete(fboSmaa);
+
+	GLU bufSmaaArea;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaArea);
+	glTextureStorage2D(bufSmaaArea, 1, GL_RG8, 160, 560);
+	glTextureSubImage2D(bufSmaaArea, 0, 0, 0, 160, 560, GL_RG, GL_UNSIGNED_BYTE, areaTexBytes);
+	GLU bufSmaaSearch;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaSearch);
+	glTextureStorage2D(bufSmaaSearch, 1, GL_R8, 64, 16);
+	glTextureSubImage2D(bufSmaaSearch, 0, 0, 0, 64, 16, GL_RED, GL_UNSIGNED_BYTE, searchTexBytes);
+
+	GLU samplerSMAA;
+	glCreateSamplers(1, &samplerSMAA);
+	glSamplerParameteri(samplerSMAA, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glSamplerParameteri(samplerSMAA, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glSamplerParameteri(samplerSMAA, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glSamplerParameteri(samplerSMAA, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 	// Shaders
 	// -------
 	const std::string macroDefineTransparency = "#define TRANSPARENCY";
@@ -191,6 +242,14 @@ I32 main() {
 	Shader passShading("src/shaders/final.vert", "src/shaders/shading.frag");
 	Shader passForward("src/shaders/forward.vert", "src/shaders/forward.frag", "", macroDefineTransparency);
 	Shader passExposureToneGamma("src/shaders/final.vert", "src/shaders/final.frag");
+	Shader passPassThrough("src/shaders/final.vert", "src/shaders/passThrough.frag");
+
+	const std::string macroDefineSmaa = std::string("#define g_kWScreen ") + std::to_string(g_kWScreen) + "\n"
+		"#define g_kHScreen " + std::to_string(g_kHScreen);
+	Shader passSmaaEdge("src/shaders/smaaEdgeDetection.vert", "src/shaders/smaaEdgeDetection.frag", "", macroDefineSmaa);
+	Shader passSmaaBlending("src/shaders/smaaBlendingWeightCalculation.vert", "src/shaders/smaaBlendingWeightCalculation.frag", "", macroDefineSmaa);
+	Shader passSmaaNeighborhood("src/shaders/smaaNeighborhoodBlending.vert", "src/shaders/smaaNeighborhoodBlending.frag", "", macroDefineSmaa);
+
 
 	GLU samplerAniso;
 	glCreateSamplers(1, &samplerAniso);
@@ -368,17 +427,17 @@ I32 main() {
 			
 			glGenerateTextureMipmap(bufDiffuseLight);
 		}
-		// final pass, apply exposure, tone mapping and gamma correction
+		// apply exposure, tone mapping and gamma correction
 		// -------------------------------------------------------------
 		{
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glBindFramebuffer(GL_FRAMEBUFFER, fboBack);
 
 			if (g_debug) {
 				glBindTextureUnit(2, bufDepthShadow);
 				glBindSampler(2, samplerShadowDepth);
 				passExposureToneGamma.SetUInt("IdxCascade", g_debugCascadeIdx);
 			} else {
-				glBindTextureUnit(0, bufColor);
+				glBindTextureUnit(0, bufHdr);
 				glBindTextureUnit(1, bufDiffuseLight);
 				glBindSampler(0, samplerPoint);
 				glBindSampler(1, samplerTrilinear);
@@ -387,6 +446,65 @@ I32 main() {
 			}
 			passExposureToneGamma.SetBool("Debug", g_debug);
 			passExposureToneGamma.Use();
+			glEnable(GL_FRAMEBUFFER_SRGB);
+			RenderQuad();
+			glDisable(GL_FRAMEBUFFER_SRGB);
+		}
+		if (g_smaa)
+		// SMAA 1x
+		// -------
+		{
+			glClearTexImage(bufSmaaEdge, 0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
+			glClearTexImage(bufSmaaBlend, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+			glClearTexImage(bufStencil, 0, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, nullptr);
+
+			// edge detection
+			{
+				glEnable(GL_STENCIL_TEST);
+				glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+				glStencilFunc(GL_ALWAYS, 0x01, 0x01);
+				glStencilMask(0x01);
+				glBindFramebuffer(GL_FRAMEBUFFER, fboSmaa);
+				glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaEdge, 0);
+				glBindTextureUnit(0, bufLdr);
+				glBindSampler(0, samplerPoint);
+				passSmaaEdge.Use();
+				RenderQuad();
+			}
+			// blending weight calculation
+			{
+				glStencilFunc(GL_EQUAL, 0x01, 0x01);
+				glStencilMask(0);
+				glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaBlend, 0);
+				glBindTextureUnit(0, bufSmaaEdge);
+				glBindTextureUnit(1, bufSmaaArea);
+				glBindTextureUnit(2, bufSmaaSearch);
+				for (int i = 0; i <= 2; i++)
+					glBindSampler(i, samplerSMAA);
+				passSmaaBlending.Use();
+				RenderQuad();
+				glDisable(GL_STENCIL_TEST);
+			}
+			// neighborhood blending
+			{
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glBindTextureUnit(0, bufLdrSrgb);
+				glEnable(GL_FRAMEBUFFER_SRGB);
+				glBindTextureUnit(1, bufSmaaBlend);
+				glBindSampler(0, samplerSMAA);
+				glBindSampler(1, samplerSMAA);
+				passSmaaNeighborhood.Use();
+				RenderQuad();
+				glDisable(GL_FRAMEBUFFER_SRGB);
+			}
+		}
+		else
+		// pass through to back buffer
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glBindTextureUnit(0, bufLdr);
+			glBindSampler(0, samplerPoint);
+			passPassThrough.Use();
 			RenderQuad();
 		}
 
@@ -532,6 +650,8 @@ void CallbackKeyboard(GLFWwindow* window, I32 key, I32 scancode, I32 action, I32
 
 	if (key == GLFW_KEY_N)
 		g_normalMapping = !g_normalMapping;
+	if (key == GLFW_KEY_Z)
+		g_smaa = !g_smaa;
 }
 
 void CallbackMessage(GLE source, GLE type, GLU id, GLE severity, GLS length,

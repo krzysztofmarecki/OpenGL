@@ -1,5 +1,4 @@
 #version 420 core
-#include "gamma.gl"
 out vec4 outColor;
 
 in vec2 UV;
@@ -12,11 +11,11 @@ uniform bool Debug;
 uniform uint IdxCascade;
 uniform float LevelLastMipMap;
 
-vec3 ToneMap(vec3 x){
+vec3 ToneMap(vec3 x) {
 	return x / (x + 1);
 };
 
-void main() {        
+void main() {
 	if (!Debug) {
 		vec3 colorHDR = texture(ColorHDR, UV).rgb;
 		// exposure:
@@ -26,7 +25,6 @@ void main() {
 		colorHDR *= (luminance / avgLuminance);
 
 		colorHDR = ToneMap(colorHDR);
-		colorHDR = GammaFromLinear(colorHDR);
 	
 		outColor = vec4(colorHDR, 1);
 	} else {

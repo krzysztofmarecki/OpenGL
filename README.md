@@ -28,6 +28,13 @@ Various graphic effects implemented in OpenGL.
 
 &#42; A Sampling of Shadow Techniques https://therealmjp.github.io/posts/shadow-maps/  
 &#42;&#42; Playing with Real-Time Shadows https://www.realtimeshadows.com/sites/default/files/Playing%20with%20Real-Time%20Shadows_0.pdf
+#### SMAA integration
+- 1x
+- blend weights looks different than in reference demo&#42; due to clip origin in lower left corner
+  - with upper left looks the same
+- final image exactly matches reference demo&#42;
+
+&#42; https://github.com/iryoku/smaa
 #### Normal mapping
 - world space
 
@@ -64,7 +71,8 @@ Press
 "Q" and "E" to change exposure.  
 "R" and "T" to decrease/increase bias (constant value added to normalized depth)  
 "Y" and "U" to decrease/increase scale of normal offset bias  
-"," and "." to decrease/increase size of ligh source for PCSS
+"," and "." to decrease/increase size of ligh source for PCSS  
+"Z" to toggle SMAA
 Scroll mouse wheel to change FOV.
 
 
