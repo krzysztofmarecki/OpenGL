@@ -1,4 +1,5 @@
 #version 420 core
+#include "gamma.gl"
 out vec4 outColor;
 
 in vec2 UV;
@@ -15,18 +16,6 @@ vec3 ToneMap(vec3 x){
 	return x / (x + 1);
 };
 
-float GammaCor(float x){
-	if (x > 0.04045)
-		return pow( ((x + 0.055)/1.055), 2.4 );
-	else
-		return x / 12.92;
-}
-
-vec3 GammaCor(vec3 rgb) {
-	return vec3(GammaCor(rgb.r),
-				GammaCor(rgb.g),
-				GammaCor(rgb.b));
-}
 void main() {        
 	if (!Debug) {
 		vec3 colorHDR = texture(ColorHDR, UV).rgb;
@@ -37,7 +26,7 @@ void main() {
 		colorHDR *= (luminance / avgLuminance);
 
 		colorHDR = ToneMap(colorHDR);
-		colorHDR = GammaCor(colorHDR);
+		colorHDR = GammaFromLinear(colorHDR);
 	
 		outColor = vec4(colorHDR, 1);
 	} else {

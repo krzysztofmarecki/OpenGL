@@ -1,6 +1,7 @@
 #version 430 core
 #include "lightning.gl"
 #include "normals.gl"
+#include "gamma.gl"
 layout (location = 0) out vec3 outColor;
 layout (location = 1) out float outDiffuseLight;
 
@@ -29,7 +30,7 @@ void main() {
 	#endif
 	const float vsDepth = Input.VsDepth;
 	
-	const vec3 colorDiffuse = texture(Diffuse, Input.UV).rgb;
+	const vec3 colorDiffuse = LinearFromGamma(texture(Diffuse, Input.UV).rgb);
 	const float colorSpecular = texture(Specular, Input.UV).r;
 	const vec3 wsNormal = GetWsNormal(Input.WsNormal, Input.WsTangent, texture(Normal, Input.UV).rgb);
 	// you may want to pass vertex normal for normal offset bias even if normal mapping is enabled
@@ -50,7 +51,7 @@ void main() {
     }
 
 	// ambient
-	color += colorDiffuse * .3;
+	color += colorDiffuse * .1;
 
 	outDiffuseLight = log(0.01+dot(colorPureDiffuse, vec3(0.2126, 0.7152, 0.0722)));
 	outColor = color;

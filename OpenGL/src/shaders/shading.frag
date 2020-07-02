@@ -53,7 +53,7 @@ void main() {
     }
 
 	// ambient
-	color += colorDiffuse * .3;
+	color += colorDiffuse * .1;
 	Color = color;
 	DiffuseLight = log(0.01+dot(colorPureDiffuse, vec3(0.2126, 0.7152, 0.0722)));
 }

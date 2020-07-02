@@ -1,5 +1,6 @@
 #version 420 core
 #include "normals.gl"
+#include "gamma.gl"
 layout (location = 0) out vec4 outDiffuseSpec;
 layout (location = 1) out vec3 outNormal;
 
@@ -22,7 +23,7 @@ void main() {
 		discard;
 	#endif
 	
-	const vec3 colorDiffuse = texture(Diffuse, Input.UV).rgb;
+	const vec3 colorDiffuse = LinearFromGamma(texture(Diffuse, Input.UV).rgb);
 	const float colorSpecular = texture(Specular, Input.UV).r;
 	const vec3 wsNormal = GetWsNormal(Input.WsNormal, Input.WsTangent, texture(Normal, Input.UV).rgb);
 	outDiffuseSpec = vec4(colorDiffuse, colorSpecular);

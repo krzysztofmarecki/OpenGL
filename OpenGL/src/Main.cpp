@@ -34,7 +34,7 @@ void RenderQuad();
 
 Camera	g_camera(Vec3(0.0f, 0.0f, 3.0f));
 
-F32		g_exposure = 1.0f;
+F32		g_exposure = 0.1f;
 Bool	g_normalMapping = true;
 F32		g_bias = 0.0;
 F32		g_scaleNormalOffsetBias = 0;
@@ -300,10 +300,10 @@ I32 main() {
 				Vec3(50, 10, -50)
 			};
 			const std::array<Vec3, kNumPointLights> aLightColor = {
-				Vec3(500),
-				Vec3(500),
-				Vec3(500),
-				Vec3(500)
+				Vec3(50),
+				Vec3(50),
+				Vec3(50),
+				Vec3(50)
 			};
 			auto SetUniformsShadingPass = [&](Shader& shader) {
 				shader.SetVec3("WsPosCamera", g_camera.GetWsPosition());

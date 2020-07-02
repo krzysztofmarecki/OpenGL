@@ -1,0 +1,9 @@
+//? #version 330
+
+vec3 LinearFromGamma(vec3 rgb) {
+	return pow(rgb, vec3(2.2));
+}
+
+vec3 GammaFromLinear(vec3 rgb) {
+	return pow(rgb, vec3(1/2.2));
+}
