@@ -197,6 +197,14 @@ I32 main() {
 	glSamplerParameterf(samplerAniso, GL_TEXTURE_MAX_ANISOTROPY, 16);
 	glSamplerParameteri(samplerAniso, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 	glSamplerParameteri(samplerAniso, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	GLU samplerPoint;
+	glCreateSamplers(1, &samplerPoint);
+	glSamplerParameteri(samplerPoint, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glSamplerParameteri(samplerPoint, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	GLU samplerTrilinear;
+	glCreateSamplers(1, &samplerTrilinear);
+	glSamplerParameteri(samplerTrilinear, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glSamplerParameteri(samplerTrilinear, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 	const Model sceneSponza("sponza/sponza.dae");
 	F64 lastFrame = 0;
@@ -261,6 +269,7 @@ I32 main() {
 				
 				passDirectShadowTransp.SetMat4("ModelLightProj", aLightProj[i] * modelSponza);
 				passDirectShadowTransp.Use();
+				glBindSampler(0, samplerPoint); // mask
 				sceneSponza.DrawGeometryWithMaskOnlyTransp();
 			}
 			glDisable(GL_POLYGON_OFFSET_FILL);
@@ -283,11 +292,10 @@ I32 main() {
 
 			passGeometry.Use();
 			SetUniformsBasics(passGeometry);
-			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
+			for (GLU i = 1; i <= 3; i++) // diffuse, specular, normal
 				glBindSampler(i, samplerAniso);
+			glBindSampler(4, samplerPoint); // mask
 			sceneSponza.Draw();
-			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
-				glBindSampler(i, 0);
 		}
 		// deffered pass + forward pass for masked objects + generate mipmaps for bufDiffuseLight
 		// --------------------------------------------------------------------------------------
@@ -335,6 +343,9 @@ I32 main() {
 			glBindTextureUnit(3, bufDepthShadow);
 			glBindTextureUnit(4, bufDepthShadow);
 			glBindTextureUnit(5, bufRandomAngles); // lack of sampler is intentional
+			glBindSampler(0, samplerPoint);
+			glBindSampler(1, samplerPoint);
+			glBindSampler(2, samplerPoint);
 			glBindSampler(3, samplerShadowPCF);
 			glBindSampler(4, samplerShadowDepth);
 			
@@ -351,11 +362,9 @@ I32 main() {
 			glBindSampler(0, samplerShadowPCF);
 			glBindSampler(6, samplerShadowDepth);
 			glBindTextureUnit(5, bufRandomAngles);
-			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
+			for (GLU i = 1; i <= 4; i++) // diffuse, specular, normal, mask
 				glBindSampler(i, samplerAniso);
 			sceneSponza.DrawTransp();
-			for (GLU i = 1; i < 5; i++) // diffuse, specular, normal, mask
-				glBindSampler(i, 0);
 			
 			glGenerateTextureMipmap(bufDiffuseLight);
 		}
@@ -371,6 +380,8 @@ I32 main() {
 			} else {
 				glBindTextureUnit(0, bufColor);
 				glBindTextureUnit(1, bufDiffuseLight);
+				glBindSampler(0, samplerPoint);
+				glBindSampler(1, samplerTrilinear);
 				passExposureToneGamma.SetFloat("Exposure", g_exposure);
 				passExposureToneGamma.SetFloat("LevelLastMipMap", log2f(g_kWScreen));
 			}
