@@ -9,10 +9,11 @@ out vec4 outColor;
 
 layout (binding = 0) uniform sampler2D Color;
 layout (binding = 1) uniform sampler2D Blend;
+layout (binding = 2) uniform sampler2D Velocity;
 
 in vec2 UV;
 in vec4 Offset;
 
 void main() {
-    outColor = SMAANeighborhoodBlendingPS(UV, Offset, Color, Blend);
+    outColor = SMAANeighborhoodBlendingPS(UV, Offset, Color, Blend, Velocity);
 }

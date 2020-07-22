@@ -2,7 +2,7 @@
 
 Various graphic effects implemented in OpenGL.
 
-![](https://i.ibb.co/fNvMXPs/Bez-tytu-u.png)
+![](https://i.ibb.co/jbZBCp1/Bez-tytu-u.png)
 
 #### Shadow mapping
 - PCF (2 modes)
@@ -29,10 +29,11 @@ Various graphic effects implemented in OpenGL.
 &#42; A Sampling of Shadow Techniques https://therealmjp.github.io/posts/shadow-maps/  
 &#42;&#42; Playing with Real-Time Shadows https://www.realtimeshadows.com/sites/default/files/Playing%20with%20Real-Time%20Shadows_0.pdf
 #### SMAA integration
-- 1x
+- T2x, 1x
 - blend weights looks different than in reference demo&#42; due to clip origin in lower left corner
   - with upper left looks the same
-- final image exactly matches reference demo&#42;
+- for 1x final image exactly matches reference demo
+- non zero subsample indicies produce worse edges, hence disabled by default
 
 &#42; https://github.com/iryoku/smaa
 #### Normal mapping
@@ -72,7 +73,8 @@ Press
 "R" and "T" to decrease/increase bias (constant value added to normalized depth)  
 "Y" and "U" to decrease/increase scale of normal offset bias  
 "," and "." to decrease/increase size of ligh source for PCSS  
-"Z" to toggle SMAA
+"Z" to cycle through no AA, Smaa 1x, Smaa T2x
+"X" to toggle subsample indicies for Smaa
 Scroll mouse wheel to change FOV.
 
 

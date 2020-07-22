@@ -3,8 +3,10 @@
 #include "gamma.gl"
 layout (location = 0) out vec4 outDiffuseSpec;
 layout (location = 1) out vec3 outNormal;
-
+layout (location = 2) out vec2 outVelocity;
 in VS_OUT {
+	vec3 PosCur;
+	vec3 PosPrev;
     vec3 WsNormal;
 	vec3 WsTangent;
     vec2 UV;
@@ -28,5 +30,6 @@ void main() {
 	const vec3 wsNormal = GetWsNormal(Input.WsNormal, Input.WsTangent, texture(Normal, Input.UV).rgb);
 	outDiffuseSpec = vec4(colorDiffuse, colorSpecular);
 	outNormal = wsNormal * 0.5 + 0.5;
+	outVelocity = (Input.PosCur.xy / Input.PosCur.z) - (Input.PosPrev.xy / Input.PosPrev.z);
 }
 

@@ -14,6 +14,8 @@ in vec2 UV;
 in vec2 pixcoord;
 in vec4 aOffset[3];
 
+uniform vec4 SubsampleIndices;
+
 void main() {
-    outBlendingWeights = SMAABlendingWeightCalculationPS(UV, pixcoord, aOffset, Edge, Area, Search, vec4(0));
+    outBlendingWeights = SMAABlendingWeightCalculationPS(UV, pixcoord, aOffset, Edge, Area, Search, SubsampleIndices);
 }

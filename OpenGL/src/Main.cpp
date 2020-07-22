@@ -49,7 +49,9 @@ I32		g_debugCascadeIdx = 0;
 Vec3	g_wsPosSun(217, 265, -80);
 F32		g_sizeFilter = 15;
 F32		g_widthLight = 800;
-Bool	g_smaa = true;
+enum class Smaa { None = 0, x1 = 1, T2x = 2 };
+Smaa	g_smaa = Smaa::T2x;
+Bool	g_smaaSubsambleIndicies = false;
 
 I32 main() {
 	// glfw: initialize and configure
@@ -114,22 +116,26 @@ I32 main() {
 	GLU bufDepth;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufDepth);
 	glTextureStorage2D(bufDepth,1, GL_DEPTH_COMPONENT32F, g_kWScreen, g_kHScreen);
+	GLU bufVelocity;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufVelocity);
+	glTextureStorage2D(bufVelocity, 1, GL_RG16F, g_kWScreen, g_kHScreen);
 	
 	// create and configure framebuffers
 	// ----------------------
-	auto CreateConfigureFrameBuffer = [](GLU att0, GLU att1, GLU depth) {
-		const GLU attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+	auto CreateConfigureFrameBuffer = [](GLU att0, GLU att1, GLU att2, GLU depth) {
+		const GLU attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
 		GLU fbo;
 		glCreateFramebuffers(1, &fbo);
-		glNamedFramebufferDrawBuffers(fbo, 2, attachments);
+		glNamedFramebufferDrawBuffers(fbo, 3, attachments);
 		glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0, att0, 0);
 		glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT1, att1, 0);
+		glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT2, att2, 0);
 		glNamedFramebufferTexture(fbo, GL_DEPTH_ATTACHMENT, depth, 0);
 		return fbo;
 	};
 
-	const GLU fboOpaque = CreateConfigureFrameBuffer(bufDiffuseSpec, bufNormal, bufDepth);
-	const GLU fboTransparent = CreateConfigureFrameBuffer(bufHdr, bufDiffuseLight, bufDepth);
+	const GLU fboOpaque = CreateConfigureFrameBuffer(bufDiffuseSpec, bufNormal, bufVelocity, bufDepth);
+	const GLU fboTransparent = CreateConfigureFrameBuffer(bufHdr, bufDiffuseLight, bufVelocity, bufDepth);
 	GLU fboBack;
 	glCreateFramebuffers(1, &fboBack);
 	glNamedFramebufferDrawBuffer(fboBack, GL_COLOR_ATTACHMENT0);
@@ -209,6 +215,12 @@ I32 main() {
 	GLU bufStencil;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufStencil);
 	glTextureStorage2D(bufStencil, 1, GL_STENCIL_INDEX8, g_kWScreen, g_kHScreen);
+	GLU bufSmaaCurrentSrgb;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaCurrentSrgb);
+	glTextureStorage2D(bufSmaaCurrentSrgb, 1, GL_SRGB8_ALPHA8, g_kWScreen, g_kHScreen);
+	GLU bufSmaaPreviousSrgb;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaPreviousSrgb);
+	glTextureStorage2D(bufSmaaPreviousSrgb, 1, GL_SRGB8_ALPHA8, g_kWScreen, g_kHScreen);
 
 	GLU fboSmaa;
 	glCreateFramebuffers(1, &fboSmaa);
@@ -245,11 +257,11 @@ I32 main() {
 	Shader passPassThrough("src/shaders/final.vert", "src/shaders/passThrough.frag");
 
 	const std::string macroDefineSmaa = std::string("#define g_kWScreen ") + std::to_string(g_kWScreen) + "\n"
-		"#define g_kHScreen " + std::to_string(g_kHScreen);
+		"#define g_kHScreen " + std::to_string(g_kHScreen) +"\n#define SMAA_REPROJECTION 1";
 	Shader passSmaaEdge("src/shaders/smaaEdgeDetection.vert", "src/shaders/smaaEdgeDetection.frag", "", macroDefineSmaa);
 	Shader passSmaaBlending("src/shaders/smaaBlendingWeightCalculation.vert", "src/shaders/smaaBlendingWeightCalculation.frag", "", macroDefineSmaa);
 	Shader passSmaaNeighborhood("src/shaders/smaaNeighborhoodBlending.vert", "src/shaders/smaaNeighborhoodBlending.frag", "", macroDefineSmaa);
-
+	Shader passSmaaTemporal("src/shaders/smaaTemporalResolve.vert", "src/shaders/smaaTemporalResolve.frag", "", macroDefineSmaa);
 
 	GLU samplerAniso;
 	glCreateSamplers(1, &samplerAniso);
@@ -266,14 +278,17 @@ I32 main() {
 	glSamplerParameteri(samplerTrilinear, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 	const Model sceneSponza("sponza/sponza.dae");
-	F64 lastFrame = 0;
+	Mat4 modelViewProjPrevSponza = glm::identity<Mat4>();
+	F64 frameTimePrev = 0;
+	U64 frameNumber = -1;
 
 	// render loop
 	// -----------
 	while (!glfwWindowShouldClose(window)) {
-		const F64 currentFrame = glfwGetTime();
-		const F64 deltaTime = currentFrame - lastFrame;
-		lastFrame = currentFrame;
+		frameNumber++;
+		const F64 frameTimeCurr = glfwGetTime();
+		const F64 deltaTime = frameTimeCurr - frameTimePrev;
+		frameTimePrev = frameTimeCurr;
 		ProcessInput(window, deltaTime);
 
 		if constexpr (!g_kVSync)
@@ -334,12 +349,23 @@ I32 main() {
 			glDisable(GL_POLYGON_OFFSET_FILL);
 			glViewport(0, 0, g_kWScreen, g_kHScreen);
 		}
+		auto JitterProjection = [](const Mat4& proj, U64 frame) {
+			// flipped y values (from SMAA.h) due to clip origin in lower left corner
+			// premultiplied by 2
+			const Vec2 jitters[2] = { Vec2( 0.5, 0.5),
+									  Vec2(-0.5,-0.5) };
+			const Vec2 jitter = jitters[frame % 2] * Vec2(1.f/g_kWScreen, 1.f/g_kHScreen);
+			if (g_smaa == Smaa::T2x)
+				return glm::translate(glm::identity<Mat4>(), Vec3(jitter, 0)) * proj;
+			else
+				return proj;
+		};
 		const float nearPlane = 0.1;
-		const Mat4 projection = CalculateInfReversedZProj(g_camera, (F32)g_kWScreen / (F32)g_kHScreen, nearPlane);
+		const Mat4 projection = JitterProjection(CalculateInfReversedZProj(g_camera, (F32)g_kWScreen / (F32)g_kHScreen, nearPlane), frameNumber);
 		const Mat4 view = g_camera.GetViewMatrix();
 		auto SetUniformsBasics = [&](Shader& shader) {
-			shader.SetMat4("Model", modelSponza);
-			shader.SetMat4("ViewProj", projection * view);
+			shader.SetMat4("ModelViewProj", projection * view * modelSponza);
+			shader.SetMat4("ModelViewProjPrev", modelViewProjPrevSponza);
 			shader.SetMat3("NormalMatrix", glm::transpose(glm::inverse(Mat3(modelSponza))));
 			shader.SetBool("NormalMapping", g_normalMapping);
 		};
@@ -355,6 +381,8 @@ I32 main() {
 				glBindSampler(i, samplerAniso);
 			glBindSampler(4, samplerPoint); // mask
 			sceneSponza.Draw();
+
+			modelViewProjPrevSponza = projection * view * modelSponza;
 		}
 		// deffered pass + forward pass for masked objects + generate mipmaps for bufDiffuseLight
 		// --------------------------------------------------------------------------------------
@@ -416,6 +444,7 @@ I32 main() {
 			passForward.Use();
 			SetUniformsShadingPass(passForward);
 			SetUniformsBasics(passForward);
+			passForward.SetMat4("Model", modelSponza);
 			glBindTextureUnit(0, bufDepthShadow);
 			glBindTextureUnit(6, bufDepthShadow);
 			glBindSampler(0, samplerShadowPCF);
@@ -450,53 +479,97 @@ I32 main() {
 			RenderQuad();
 			glDisable(GL_FRAMEBUFFER_SRGB);
 		}
-		if (g_smaa)
-		// SMAA 1x
-		// -------
-		{
+		
+		// SMAA
+		// ----
+		if (g_smaa != Smaa::None) {
 			glClearTexImage(bufSmaaEdge, 0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
 			glClearTexImage(bufSmaaBlend, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 			glClearTexImage(bufStencil, 0, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, nullptr);
 
-			// edge detection
+			// 1x
 			{
-				glEnable(GL_STENCIL_TEST);
-				glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-				glStencilFunc(GL_ALWAYS, 0x01, 0x01);
-				glStencilMask(0x01);
-				glBindFramebuffer(GL_FRAMEBUFFER, fboSmaa);
-				glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaEdge, 0);
-				glBindTextureUnit(0, bufLdr);
-				glBindSampler(0, samplerPoint);
-				passSmaaEdge.Use();
-				RenderQuad();
+				// edge detection
+				{
+					glEnable(GL_STENCIL_TEST);
+					glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+					glStencilFunc(GL_ALWAYS, 0x01, 0x01);
+					glStencilMask(0x01);
+					glBindFramebuffer(GL_FRAMEBUFFER, fboSmaa);
+					glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaEdge, 0);
+					glBindTextureUnit(0, bufLdr);
+					glBindSampler(0, samplerPoint);
+					passSmaaEdge.Use();
+					RenderQuad();
+				}
+				// blending weight calculation
+				{
+					glStencilFunc(GL_EQUAL, 0x01, 0x01);
+					glStencilMask(0);
+					glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaBlend, 0);
+					glBindTextureUnit(0, bufSmaaEdge);
+					glBindTextureUnit(1, bufSmaaArea);
+					glBindTextureUnit(2, bufSmaaSearch);
+					for (int i = 0; i <= 2; i++)
+						glBindSampler(i, samplerSMAA);
+					auto GetSubsampleIndices = [](U64 frame) {
+						const Vec4 indicies[2] = { Vec4(1, 1, 1, 0),
+												   Vec4(2, 2, 2, 0) };
+						if (g_smaaSubsambleIndicies)
+							return indicies[frame % 2];
+						else
+							return Vec4(0);
+					};
+					passSmaaBlending.Use();
+					passSmaaBlending.SetVec4("SubsampleIndices", GetSubsampleIndices(frameNumber));
+					RenderQuad();
+					glDisable(GL_STENCIL_TEST);
+				}
+				// neighborhood blending
+				{
+					glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaCurrentSrgb, 0);
+					glBindTextureUnit(0, bufLdrSrgb);
+					glBindTextureUnit(1, bufSmaaBlend);
+					glBindTextureUnit(2, bufVelocity);
+					glBindSampler(0, samplerSMAA);
+					glBindSampler(1, samplerSMAA);
+					glBindSampler(2, samplerPoint);
+					passSmaaNeighborhood.Use();
+					glEnable(GL_FRAMEBUFFER_SRGB);
+					RenderQuad();
+					glDisable(GL_FRAMEBUFFER_SRGB);
+				}
 			}
-			// blending weight calculation
-			{
-				glStencilFunc(GL_EQUAL, 0x01, 0x01);
-				glStencilMask(0);
-				glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaBlend, 0);
-				glBindTextureUnit(0, bufSmaaEdge);
-				glBindTextureUnit(1, bufSmaaArea);
-				glBindTextureUnit(2, bufSmaaSearch);
-				for (int i = 0; i <= 2; i++)
-					glBindSampler(i, samplerSMAA);
-				passSmaaBlending.Use();
-				RenderQuad();
-				glDisable(GL_STENCIL_TEST);
-			}
-			// neighborhood blending
-			{
+
+			// T2x
+			if (g_smaa == Smaa::T2x) {
+				// temporal resolve
+				{
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+					glBindTextureUnit(0, bufSmaaCurrentSrgb);
+					glBindTextureUnit(1, bufSmaaPreviousSrgb);
+					glBindTextureUnit(2, bufVelocity);
+					glBindSampler(0, samplerPoint);
+					glBindSampler(1, samplerSMAA);
+					glBindSampler(2, samplerPoint);
+
+					passSmaaTemporal.Use();
+					glEnable(GL_FRAMEBUFFER_SRGB);
+					RenderQuad();
+					glDisable(GL_FRAMEBUFFER_SRGB);
+				}
+				std::swap(bufSmaaCurrentSrgb, bufSmaaPreviousSrgb);
+			} else {
+				// pass through to back buffer
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				glBindTextureUnit(0, bufLdrSrgb);
+				glBindTextureUnit(0, bufSmaaCurrentSrgb);
+				glBindSampler(0, samplerPoint);
+				passPassThrough.Use();
 				glEnable(GL_FRAMEBUFFER_SRGB);
-				glBindTextureUnit(1, bufSmaaBlend);
-				glBindSampler(0, samplerSMAA);
-				glBindSampler(1, samplerSMAA);
-				passSmaaNeighborhood.Use();
 				RenderQuad();
 				glDisable(GL_FRAMEBUFFER_SRGB);
 			}
+			
 		}
 		else
 		// pass through to back buffer
@@ -651,7 +724,9 @@ void CallbackKeyboard(GLFWwindow* window, I32 key, I32 scancode, I32 action, I32
 	if (key == GLFW_KEY_N)
 		g_normalMapping = !g_normalMapping;
 	if (key == GLFW_KEY_Z)
-		g_smaa = !g_smaa;
+		g_smaa = Smaa((static_cast<I32>(g_smaa) + 1) % 3);
+	if (key == GLFW_KEY_X)
+		g_smaaSubsambleIndicies = !g_smaaSubsambleIndicies;
 }
 
 void CallbackMessage(GLE source, GLE type, GLU id, GLE severity, GLS length,

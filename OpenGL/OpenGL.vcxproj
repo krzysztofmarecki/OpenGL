@@ -57,6 +57,8 @@
     <None Include="src\shaders\smaaNeighborhoodBlending.frag" />
     <None Include="src\shaders\smaaNeighborhoodBlending.vert" />
     <None Include="src\shaders\smaaSettings.gl" />
+    <None Include="src\shaders\smaaTemporalResolve.frag" />
+    <None Include="src\shaders\smaaTemporalResolve.vert" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

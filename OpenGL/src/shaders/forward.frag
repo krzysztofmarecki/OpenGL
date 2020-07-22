@@ -4,8 +4,10 @@
 #include "gamma.gl"
 layout (location = 0) out vec3 outColor;
 layout (location = 1) out float outDiffuseLight;
-
+layout (location = 2) out vec2 outVelocity;
 in VS_OUT {
+	vec3 PosCur;
+	vec3 PosPrev;
     vec3 WsPos;
     vec3 WsNormal;
 	vec3 WsTangent;
@@ -55,5 +57,6 @@ void main() {
 
 	outDiffuseLight = log(0.01+dot(colorPureDiffuse, vec3(0.2126, 0.7152, 0.0722)));
 	outColor = color;
+	outVelocity = (Input.PosCur.xy / Input.PosCur.z) - (Input.PosPrev.xy / Input.PosPrev.z);
 }
 

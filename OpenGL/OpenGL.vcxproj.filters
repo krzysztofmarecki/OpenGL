@@ -34,7 +34,7 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\shaders\SMAA.h">
-      <Filter>Header Files</Filter>
+      <Filter>Source Files\Shaders</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -122,6 +122,12 @@
       <Filter>Source Files\Shaders</Filter>
     </None>
     <None Include="src\shaders\gamma.gl">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\smaaTemporalResolve.frag">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\smaaTemporalResolve.vert">
       <Filter>Source Files\Shaders</Filter>
     </None>
   </ItemGroup>
