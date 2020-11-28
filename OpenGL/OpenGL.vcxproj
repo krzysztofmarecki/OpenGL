@@ -128,16 +128,16 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)bin\intermediates\$(Platform)\$(Configuration)\</IntDir>
-    <IncludePath>C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\assimp-4.1.WIN64\include;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\glfw-3.2.1.bin.WIN64\include;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\glad\include;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\stb-master;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\glm;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\glfw-3.2.1.bin.WIN64\lib-vc2015;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\assimp-4.1.WIN64\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)\libs\assimp-4.1.WIN64\include;$(ProjectDir)\libs\glfw-3.2.1.bin.WIN64\include;$(ProjectDir)\libs\glad\include;$(ProjectDir)\libs\stb-master;$(ProjectDir)\libs\glm;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)\libs\glfw-3.2.1.bin.WIN64\lib-vc2015;$(ProjectDir)\libs\assimp-4.1.WIN64\lib;$(LibraryPath)</LibraryPath>
     <RunCodeAnalysis>false</RunCodeAnalysis>
     <EnableClangTidyCodeAnalysis>true</EnableClangTidyCodeAnalysis>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)bin\intermediates\$(Platform)\$(Configuration)\</IntDir>
-    <IncludePath>C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\assimp-4.1.WIN64\include;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\glfw-3.2.1.bin.WIN64\include;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\glad\include;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\stb-master;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\glm;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\glfw-3.2.1.bin.WIN64\lib-vc2015;C:\Users\Krzysiek\source\repos\OpenGL\OpenGL\libs\assimp-4.1.WIN64\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)\libs\assimp-4.1.WIN64\include;$(ProjectDir)\libs\glfw-3.2.1.bin.WIN64\include;$(ProjectDir)\libs\glad\include;$(ProjectDir)\libs\stb-master;$(ProjectDir)\libs\glm;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)\libs\glfw-3.2.1.bin.WIN64\lib-vc2015;$(ProjectDir)\libs\assimp-4.1.WIN64\lib;$(LibraryPath)</LibraryPath>
     <RunCodeAnalysis>false</RunCodeAnalysis>
     <EnableClangTidyCodeAnalysis>true</EnableClangTidyCodeAnalysis>
   </PropertyGroup>
