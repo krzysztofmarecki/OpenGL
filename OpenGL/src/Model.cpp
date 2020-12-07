@@ -26,10 +26,10 @@ struct OpaqueMaterial {
 	explicit OpaqueMaterial(GLU d, GLU s, GLU n) : m_diffuse(d), m_specular(s), m_normal(n) {}
 };
 
-struct TransparentMaterial : OpaqueMaterial {
+struct AlphaMaskedMaterial : OpaqueMaterial {
 	GLU m_mask = 0;
-	explicit TransparentMaterial() = default;
-	explicit TransparentMaterial(GLU d, GLU s, GLU n, GLU m) : OpaqueMaterial(d, s, n), m_mask(m) {}
+	explicit AlphaMaskedMaterial() = default;
+	explicit AlphaMaskedMaterial(GLU d, GLU s, GLU n, GLU m) : OpaqueMaterial(d, s, n), m_mask(m) {}
 };
 
 Model::Model(std::string pathModel) {
@@ -46,7 +46,7 @@ Model::Model(std::string pathModel) {
 	}
 	
 	std::unordered_map<U32, OpaqueMaterial> opaqueMaterials;
-	std::unordered_map<U32, TransparentMaterial> transparentMaterials;
+	std::unordered_map<U32, AlphaMaskedMaterial> transparentMaterials;
 
 	Path directory(pathModel);
 	directory.remove_filename();
@@ -82,8 +82,8 @@ Model::Model(std::string pathModel) {
 
 			// GLU mask = GetTexture(aiTextureType_OPACITY);
 			// assert(mask != 0);
-			// transparentMaterials[i] = TransparentMaterial(diffuse, specular, normal, mask);
-			transparentMaterials[i] = TransparentMaterial(diffuse, specular, normal, diffuse); // notice diffuse passed in place of mask
+			// transparentMaterials[i] = AlphaMaskedMaterial(diffuse, specular, normal, mask);
+			transparentMaterials[i] = AlphaMaskedMaterial(diffuse, specular, normal, diffuse); // notice diffuse passed in place of mask
 		} else {
 			opaqueMaterials[i] = OpaqueMaterial(diffuse, specular, normal);
 		}
@@ -146,7 +146,7 @@ Model::Model(std::string pathModel) {
 		const unsigned idxMat = rMesh.mMaterialIndex;
 		const auto itTransparent = transparentMaterials.find(idxMat);
 		if (itTransparent != transparentMaterials.end()) {
-			TransparentMaterial m = itTransparent->second;
+			AlphaMaskedMaterial m = itTransparent->second;
 			m_transparentMeshes.emplace_back(aVertex, aIndex, m.m_diffuse, m.m_specular, m.m_normal, m.m_mask);
 		} else {
 			const auto itOpaque = opaqueMaterials.find(idxMat);

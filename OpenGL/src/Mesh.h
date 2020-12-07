@@ -30,7 +30,8 @@ public:
 		assert(m_mask == 0);
 		DrawGeometryOnly();
 	}
-	void DrawTransp() const {
+
+	void DrawWithMask() const {
 		BindBasicTextures();
 		assert(m_mask != 0);
 		glBindTextureUnit(4, m_mask);

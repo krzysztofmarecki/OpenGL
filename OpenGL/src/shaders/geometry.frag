@@ -15,12 +15,12 @@ in VS_OUT {
 layout (binding = 1) uniform sampler2D Diffuse;
 layout (binding = 2) uniform sampler2D Specular;
 layout (binding = 3) uniform sampler2D Normal;
-#ifdef TRANSPARENCY
+#ifdef ALPHA_MASKED
 layout (binding = 4) uniform sampler2D Mask;
 #endif
 
 void main() {
-	#ifdef TRANSPARENCY
+	#ifdef ALPHA_MASKED
 	if (texture(Mask, Input.UV).a < .5)
 		discard;
 	#endif

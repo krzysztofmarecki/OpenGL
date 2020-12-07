@@ -1,5 +1,5 @@
 #version 420 core
-#ifdef TRANSPARENCY
+#ifdef ALPHA_MASKED
 in vec2 UV;
 layout (binding = 0) uniform sampler2D Mask;
 void main() {

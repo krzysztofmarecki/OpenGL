@@ -35,8 +35,6 @@
     <ClCompile Include="src\Shader.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="src\shaders\forward.frag" />
-    <None Include="src\shaders\forward.vert" />
     <None Include="src\shaders\gamma.gl" />
     <None Include="src\shaders\kernels.gl" />
     <None Include="src\shaders\lightning.gl" />

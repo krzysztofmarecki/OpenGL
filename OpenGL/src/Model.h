@@ -24,12 +24,12 @@ public:
 			rMesh.Draw();
 	}
 
-	void DrawTransp() const {
+	void DrawWithMask() const {
 		for (const Mesh& rMesh : m_transparentMeshes)
-			rMesh.DrawTransp();
+			rMesh.DrawWithMask();
 	}
 
-	void DrawGeometryWithMaskOnlyTransp() const {
+	void DrawWithMaskOnly() const {
 		for (const Mesh& rMesh : m_transparentMeshes)
 			rMesh.DrawWithMaskOnly();
 	}

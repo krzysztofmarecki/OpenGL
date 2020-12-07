@@ -121,21 +121,23 @@ I32 main() {
 	glTextureStorage2D(bufVelocity, 1, GL_RG16F, g_kWScreen, g_kHScreen);
 	
 	// create and configure framebuffers
-	// ----------------------
-	auto CreateConfigureFrameBuffer = [](GLU att0, GLU att1, GLU att2, GLU depth) {
-		const GLU attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+	// ---------------------------------
+	auto CreateConfigureFrameBuffer = [](std::vector<GLU> aCollorAtt, GLU depthAtt = 0) {
+		std::vector<GLU> aAttachment;
+		for (Size i = 0; i < aCollorAtt.size(); i++)
+			aAttachment.push_back(GL_COLOR_ATTACHMENT0 + i);
 		GLU fbo;
 		glCreateFramebuffers(1, &fbo);
-		glNamedFramebufferDrawBuffers(fbo, 3, attachments);
-		glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0, att0, 0);
-		glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT1, att1, 0);
-		glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT2, att2, 0);
-		glNamedFramebufferTexture(fbo, GL_DEPTH_ATTACHMENT, depth, 0);
+		glNamedFramebufferDrawBuffers(fbo, aAttachment.size(), aAttachment.data());
+		for (Size i = 0; i < aAttachment.size(); i++)
+			glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0+i, aCollorAtt[i], 0);
+		if (depthAtt != 0)
+			glNamedFramebufferTexture(fbo, GL_DEPTH_ATTACHMENT, depthAtt, 0);
 		return fbo;
 	};
 
-	const GLU fboOpaque = CreateConfigureFrameBuffer(bufDiffuseSpec, bufNormal, bufVelocity, bufDepth);
-	const GLU fboTransparent = CreateConfigureFrameBuffer(bufHdr, bufDiffuseLight, bufVelocity, bufDepth);
+	const GLU fboGeometry = CreateConfigureFrameBuffer({ bufDiffuseSpec, bufNormal, bufVelocity }, bufDepth);
+	const GLU fboDeffered = CreateConfigureFrameBuffer({ bufHdr, bufDiffuseLight }, bufDepth);
 	GLU fboBack;
 	glCreateFramebuffers(1, &fboBack);
 	glNamedFramebufferDrawBuffer(fboBack, GL_COLOR_ATTACHMENT0);
@@ -146,8 +148,8 @@ I32 main() {
 			assert(false && "Framebuffer not complete!\n");
 	};
 
-	AssertFBOIsComplete(fboOpaque);
-	AssertFBOIsComplete(fboTransparent);
+	AssertFBOIsComplete(fboGeometry);
+	AssertFBOIsComplete(fboDeffered);
 	AssertFBOIsComplete(fboBack);
 
 	// create framebuffer for CSM
@@ -247,12 +249,12 @@ I32 main() {
 
 	// Shaders
 	// -------
-	const std::string macroDefineTransparency = "#define TRANSPARENCY";
+	const std::string macroDefineAlphaMasked = "#define ALPHA_MASKED";
 	Shader passDirectShadow("src/shaders/shadow.vert", "src/shaders/shadow.frag");
-	Shader passDirectShadowTransp("src/shaders/shadow.vert", "src/shaders/shadow.frag", "", macroDefineTransparency);
+	Shader passDirectShadowAlphaMasked("src/shaders/shadow.vert", "src/shaders/shadow.frag", "", macroDefineAlphaMasked);
 	Shader passGeometry("src/shaders/geometry.vert", "src/shaders/geometry.frag");
+	Shader passGeometryAlphaMasked("src/shaders/geometry.vert", "src/shaders/geometry.frag", "", macroDefineAlphaMasked);
 	Shader passShading("src/shaders/final.vert", "src/shaders/shading.frag");
-	Shader passForward("src/shaders/forward.vert", "src/shaders/forward.frag", "", macroDefineTransparency);
 	Shader passExposureToneGamma("src/shaders/final.vert", "src/shaders/final.frag");
 	Shader passPassThrough("src/shaders/final.vert", "src/shaders/passThrough.frag");
 
@@ -341,10 +343,9 @@ I32 main() {
 				passDirectShadow.Use();
 				sceneSponza.DrawGeometryOnly();
 				
-				passDirectShadowTransp.SetMat4("ModelLightProj", aLightProj[i] * modelSponza);
-				passDirectShadowTransp.Use();
-				glBindSampler(0, samplerPoint); // mask
-				sceneSponza.DrawGeometryWithMaskOnlyTransp();
+				passDirectShadowAlphaMasked.SetMat4("ModelLightProj", aLightProj[i] * modelSponza);
+				passDirectShadowAlphaMasked.Use();
+				sceneSponza.DrawWithMaskOnly();
 			}
 			glDisable(GL_POLYGON_OFFSET_FILL);
 			glViewport(0, 0, g_kWScreen, g_kHScreen);
@@ -369,10 +370,10 @@ I32 main() {
 			shader.SetMat3("NormalMatrix", glm::transpose(glm::inverse(Mat3(modelSponza))));
 			shader.SetBool("NormalMapping", g_normalMapping);
 		};
-		// geometry pass for opaques
-		// ------------------------
+		// geometry pass
+		// -------------
 		{
-			glBindFramebuffer(GL_FRAMEBUFFER, fboOpaque);
+			glBindFramebuffer(GL_FRAMEBUFFER, fboGeometry);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear color as well, because I don't render skybox
 
 			passGeometry.Use();
@@ -382,10 +383,14 @@ I32 main() {
 			glBindSampler(4, samplerPoint); // mask
 			sceneSponza.Draw();
 
+			passGeometryAlphaMasked.Use();
+			SetUniformsBasics(passGeometryAlphaMasked);
+			sceneSponza.DrawWithMask();	
+
 			modelViewProjPrevSponza = projection * view * modelSponza;
 		}
-		// deffered pass + forward pass for masked objects + generate mipmaps for bufDiffuseLight
-		// --------------------------------------------------------------------------------------
+		// deffered pass + generate mipmaps for bufDiffuseLight
+		// ----------------------------------------------------
 		{
 			const U32 kNumPointLights = 4;
 			const std::array<Vec3, kNumPointLights> aWsPointLightPosition = {
@@ -417,9 +422,8 @@ I32 main() {
 				shader.SetVec3Arr("AWsPointLightPosition", aWsPointLightPosition.data(), aWsPointLightPosition.size());
 				shader.SetVec3Arr("APointLightColor", aLightColor.data(), aLightColor.size());
 			};
-			glBindFramebuffer(GL_FRAMEBUFFER, fboTransparent);
-			
-			// deffered
+
+			glBindFramebuffer(GL_FRAMEBUFFER, fboDeffered);
 			passShading.Use();
 			SetUniformsShadingPass(passShading);
 			passShading.SetMat4("InvViewProj", glm::inverse(projection * view));
@@ -440,24 +444,10 @@ I32 main() {
 			RenderQuad();
 			glEnable(GL_DEPTH_TEST);
 			
-			// forward
-			passForward.Use();
-			SetUniformsShadingPass(passForward);
-			SetUniformsBasics(passForward);
-			passForward.SetMat4("Model", modelSponza);
-			glBindTextureUnit(0, bufDepthShadow);
-			glBindTextureUnit(6, bufDepthShadow);
-			glBindSampler(0, samplerShadowPCF);
-			glBindSampler(6, samplerShadowDepth);
-			glBindTextureUnit(5, bufRandomAngles);
-			for (GLU i = 1; i <= 4; i++) // diffuse, specular, normal, mask
-				glBindSampler(i, samplerAniso);
-			sceneSponza.DrawTransp();
-			
 			glGenerateTextureMipmap(bufDiffuseLight);
 		}
 		// apply exposure, tone mapping and gamma correction
-		// -------------------------------------------------------------
+		// -------------------------------------------------
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, fboBack);
 
