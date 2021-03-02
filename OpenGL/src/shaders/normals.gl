@@ -2,7 +2,7 @@
 
 const float g_kPi = 3.14159265358979323846f;
 
-uniform bool NormalMapping;
+uniform bool EnableNormalMapping;
 
 vec3 GetWsNormal(vec3 wsVertexNormal, vec3 wsVertexTangent, vec3 textureNormal) {
 	const vec3 N = normalize(wsVertexNormal);
@@ -11,7 +11,7 @@ vec3 GetWsNormal(vec3 wsVertexNormal, vec3 wsVertexTangent, vec3 textureNormal) 
 	const vec3 B = cross(N,T);
 	
 	const mat3 TBN = mat3(T, B, N);
-	if (NormalMapping)
+	if (EnableNormalMapping)
 		return TBN * normalize(textureNormal * 2 - 1);
 	else
 		return N;

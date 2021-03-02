@@ -35,6 +35,8 @@
     <ClCompile Include="src\Shader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="src\shaders\depth.gl" />
+    <None Include="src\shaders\depthVelocityDownsample.frag" />
     <None Include="src\shaders\gamma.gl" />
     <None Include="src\shaders\kernels.gl" />
     <None Include="src\shaders\lightning.gl" />
@@ -57,6 +59,9 @@
     <None Include="src\shaders\smaaSettings.gl" />
     <None Include="src\shaders\smaaTemporalResolve.frag" />
     <None Include="src\shaders\smaaTemporalResolve.vert" />
+    <None Include="src\shaders\gtao.frag" />
+    <None Include="src\shaders\gtaoSpatialDenoiser.frag" />
+    <None Include="src\shaders\gtaoTemporalDenoiser.frag" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

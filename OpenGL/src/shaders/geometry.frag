@@ -19,6 +19,9 @@ layout (binding = 3) uniform sampler2D Normal;
 layout (binding = 4) uniform sampler2D Mask;
 #endif
 
+uniform vec2 JitterCurr;
+uniform vec2 JitterPrev;
+
 void main() {
 	#ifdef ALPHA_MASKED
 	if (texture(Mask, Input.UV).a < .5)
@@ -30,6 +33,7 @@ void main() {
 	const vec3 wsNormal = GetWsNormal(Input.WsNormal, Input.WsTangent, texture(Normal, Input.UV).rgb);
 	outDiffuseSpec = vec4(colorDiffuse, colorSpecular);
 	outNormal = wsNormal * 0.5 + 0.5;
-	outVelocity = (Input.PosCur.xy / Input.PosCur.z) - (Input.PosPrev.xy / Input.PosPrev.z);
+	outVelocity = ((Input.PosCur.xy / Input.PosCur.z) - JitterCurr)
+				- ((Input.PosPrev.xy / Input.PosPrev.z) - JitterPrev);
 }
 

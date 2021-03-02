@@ -19,8 +19,8 @@
 #include "../models/SearchTex.h"		// SMAA
 
 // settings
-const U32 g_kWScreen = 1280;
-const U32 g_kHScreen = 720;
+const U32 g_kWScreen = 1920;
+const U32 g_kHScreen = 1080;
 const U32 g_kNumCascades = 4;
 const Bool g_kVSync = true;
 
@@ -39,19 +39,24 @@ void RenderQuad();
 Camera	g_camera(Vec3(0.0f, 0.0f, 3.0f));
 
 F32		g_exposure = 0.1f;
-Bool	g_normalMapping = true;
+Bool	g_enableNormalMapping = true;
 F32		g_bias = 0.0;
 F32		g_scaleNormalOffsetBias = 0;
 // debug shader globals
-Bool	g_debug = false;
-I32		g_debugCascadeIdx = 0;
+Bool	g_showShadowMap = false;
+I32		g_cascadeIdx = 0;
 
 Vec3	g_wsPosSun(217, 265, -80);
-F32		g_sizeFilter = 15;
+F32		g_sizeFilterShadow = 15;
 F32		g_widthLight = 800;
 enum class Smaa { None = 0, x1 = 1, T2x = 2 };
 Smaa	g_smaa = Smaa::T2x;
-Bool	g_smaaSubsambleIndicies = false;
+Bool	g_enableSmaaSubsambleIndicies = false;
+
+F32		g_wsSizeKernelAo = 3.5;
+F32		g_rateOfChangeAo = 0.11;
+Bool	g_enableAO = true;
+Bool	g_showAO = false;
 
 I32 main() {
 	// glfw: initialize and configure
@@ -137,7 +142,7 @@ I32 main() {
 	};
 
 	const GLU fboGeometry = CreateConfigureFrameBuffer({ bufDiffuseSpec, bufNormal, bufVelocity }, bufDepth);
-	const GLU fboDeffered = CreateConfigureFrameBuffer({ bufHdr, bufDiffuseLight }, bufDepth);
+	const GLU fboDeffered = CreateConfigureFrameBuffer({ bufHdr, bufDiffuseLight });
 	GLU fboBack;
 	glCreateFramebuffers(1, &fboBack);
 	glNamedFramebufferDrawBuffer(fboBack, GL_COLOR_ATTACHMENT0);
@@ -206,6 +211,39 @@ I32 main() {
 	glTextureStorage3D(bufRandomAngles, 1, GL_R16F, kSizeRandomAngle, kSizeRandomAngle, kSizeRandomAngle);
 	glTextureSubImage3D(bufRandomAngles, 0, 0, 0, 0, kSizeRandomAngle, kSizeRandomAngle, kSizeRandomAngle, GL_RED, GL_FLOAT, aRadRandomAngles.data());
 
+	// SSAO
+	GLU bufSsao;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSsao);
+	glTextureStorage2D(bufSsao, 1, GL_R8, g_kWScreen/2, g_kHScreen/2);
+	const GLU fboSsao = CreateConfigureFrameBuffer({ bufSsao });
+	AssertFBOIsComplete(fboSsao);
+
+	GLU bufSsaoSpatiallyDenoised;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSsaoSpatiallyDenoised);
+	glTextureStorage2D(bufSsaoSpatiallyDenoised, 1, GL_R8, g_kWScreen / 2, g_kHScreen / 2);
+
+	GLU bufSsaoAccCurr;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSsaoAccCurr);
+	glTextureStorage2D(bufSsaoAccCurr, 1, GL_R8, g_kWScreen / 2, g_kHScreen / 2);
+
+	GLU bufSsaoAccPrev;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufSsaoAccPrev);
+	glTextureStorage2D(bufSsaoAccPrev, 1, GL_R8, g_kWScreen / 2, g_kHScreen / 2);
+
+	GLU bufDepthHalfResCurr;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufDepthHalfResCurr);
+	glTextureStorage2D(bufDepthHalfResCurr, 1, GL_R32F, g_kWScreen / 2, g_kHScreen / 2);
+
+	GLU bufDepthHalfResPrev;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufDepthHalfResPrev);
+	glTextureStorage2D(bufDepthHalfResPrev, 1, GL_R32F, g_kWScreen / 2, g_kHScreen / 2);
+
+	GLU bufVelocityHalfRes;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufVelocityHalfRes);
+	glTextureStorage2D(bufVelocityHalfRes, 1, GL_RG16F, g_kWScreen / 2, g_kHScreen / 2);
+	const GLU fboDepthDownsample = CreateConfigureFrameBuffer({ bufDepthHalfResCurr, bufVelocityHalfRes });
+	AssertFBOIsComplete(fboDepthDownsample);
+
 	// SMAA
 	// ----
 	GLU bufSmaaEdge;
@@ -258,36 +296,54 @@ I32 main() {
 	Shader passExposureToneGamma("src/shaders/final.vert", "src/shaders/final.frag");
 	Shader passPassThrough("src/shaders/final.vert", "src/shaders/passThrough.frag");
 
+	Shader passDepthVelocityDownsample("src/shaders/final.vert", "src/shaders/depthVelocityDownsample.frag");
+	Shader passSsao("src/shaders/final.vert", "src/shaders/gtao.frag");
+	Shader passSsaoSpatialDenoiser("src/shaders/final.vert", "src/shaders/gtaoSpatialDenoiser.frag");
+	Shader passSsaoTemporalDenoiser("src/shaders/final.vert", "src/shaders/gtaoTemporalDenoiser.frag");
+
 	const std::string macroDefineSmaa = std::string("#define g_kWScreen ") + std::to_string(g_kWScreen) + "\n"
-		"#define g_kHScreen " + std::to_string(g_kHScreen) +"\n#define SMAA_REPROJECTION 1";
+		"#define g_kHScreen " + std::to_string(g_kHScreen) + "\n#define SMAA_REPROJECTION 1";
 	Shader passSmaaEdge("src/shaders/smaaEdgeDetection.vert", "src/shaders/smaaEdgeDetection.frag", "", macroDefineSmaa);
 	Shader passSmaaBlending("src/shaders/smaaBlendingWeightCalculation.vert", "src/shaders/smaaBlendingWeightCalculation.frag", "", macroDefineSmaa);
 	Shader passSmaaNeighborhood("src/shaders/smaaNeighborhoodBlending.vert", "src/shaders/smaaNeighborhoodBlending.frag", "", macroDefineSmaa);
 	Shader passSmaaTemporal("src/shaders/smaaTemporalResolve.vert", "src/shaders/smaaTemporalResolve.frag", "", macroDefineSmaa);
 
-	GLU samplerAniso;
-	glCreateSamplers(1, &samplerAniso);
-	glSamplerParameterf(samplerAniso, GL_TEXTURE_MAX_ANISOTROPY, 16);
-	glSamplerParameteri(samplerAniso, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-	glSamplerParameteri(samplerAniso, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	GLU samplerPoint;
-	glCreateSamplers(1, &samplerPoint);
-	glSamplerParameteri(samplerPoint, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glSamplerParameteri(samplerPoint, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	GLU samplerTrilinear;
-	glCreateSamplers(1, &samplerTrilinear);
-	glSamplerParameteri(samplerTrilinear, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-	glSamplerParameteri(samplerTrilinear, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	GLU samplerAnisoRepeat;
+	glCreateSamplers(1, &samplerAnisoRepeat);
+	glSamplerParameterf(samplerAnisoRepeat, GL_TEXTURE_MAX_ANISOTROPY, 16);
+	glSamplerParameteri(samplerAnisoRepeat, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glSamplerParameteri(samplerAnisoRepeat, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glSamplerParameteri(samplerAnisoRepeat, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glSamplerParameteri(samplerAnisoRepeat, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	GLU samplerPointClamp;
+	glCreateSamplers(1, &samplerPointClamp);
+	glSamplerParameteri(samplerPointClamp, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glSamplerParameteri(samplerPointClamp, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glSamplerParameteri(samplerPointClamp, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glSamplerParameteri(samplerPointClamp, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	GLU samplerTrilinearClamp;
+	glCreateSamplers(1, &samplerTrilinearClamp);
+	glSamplerParameteri(samplerTrilinearClamp, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glSamplerParameteri(samplerTrilinearClamp, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glSamplerParameteri(samplerTrilinearClamp, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glSamplerParameteri(samplerTrilinearClamp, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	GLU samplerLinearClamp;
+	glCreateSamplers(1, &samplerLinearClamp);
+	glSamplerParameteri(samplerLinearClamp, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glSamplerParameteri(samplerLinearClamp, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glSamplerParameteri(samplerLinearClamp, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glSamplerParameteri(samplerLinearClamp, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 
 	const Model sceneSponza("sponza/sponza.dae");
 	Mat4 modelViewProjPrevSponza = glm::identity<Mat4>();
 	F64 frameTimePrev = 0;
-	U64 frameNumber = -1;
+	U64 frameCount = -1;
 
 	// render loop
 	// -----------
 	while (!glfwWindowShouldClose(window)) {
-		frameNumber++;
+		frameCount++;
 		const F64 frameTimeCurr = glfwGetTime();
 		const F64 deltaTime = frameTimeCurr - frameTimePrev;
 		frameTimePrev = frameTimeCurr;
@@ -345,42 +401,48 @@ I32 main() {
 				
 				passDirectShadowAlphaMasked.SetMat4("ModelLightProj", aLightProj[i] * modelSponza);
 				passDirectShadowAlphaMasked.Use();
+				glBindSampler(0, samplerPointClamp); // alpha mask
 				sceneSponza.DrawWithMaskOnly();
 			}
 			glDisable(GL_POLYGON_OFFSET_FILL);
 			glViewport(0, 0, g_kWScreen, g_kHScreen);
 		}
-		auto JitterProjection = [](const Mat4& proj, U64 frame) {
+		auto GetJitter = [](const U64 frameCount) {
 			// flipped y values (from SMAA.h) due to clip origin in lower left corner
 			// premultiplied by 2
-			const Vec2 jitters[2] = { Vec2( 0.5, 0.5),
+			const Vec2 aJitter[2] = { Vec2( 0.5, 0.5),
 									  Vec2(-0.5,-0.5) };
-			const Vec2 jitter = jitters[frame % 2] * Vec2(1.f/g_kWScreen, 1.f/g_kHScreen);
+			return aJitter[frameCount % 2] * Vec2(1.f / g_kWScreen, 1.f / g_kHScreen);
+		};
+		auto JitterProjection = [&GetJitter](const Mat4& proj, const U64 frameCount) {
+			const Vec2 jitter = GetJitter(frameCount);
 			if (g_smaa == Smaa::T2x)
 				return glm::translate(glm::identity<Mat4>(), Vec3(jitter, 0)) * proj;
 			else
 				return proj;
 		};
 		const float nearPlane = 0.1;
-		const Mat4 projection = JitterProjection(CalculateInfReversedZProj(g_camera, (F32)g_kWScreen / (F32)g_kHScreen, nearPlane), frameNumber);
+		const Mat4 projection = JitterProjection(CalculateInfReversedZProj(g_camera, (F32)g_kWScreen / (F32)g_kHScreen, nearPlane), frameCount);
 		const Mat4 view = g_camera.GetViewMatrix();
 		auto SetUniformsBasics = [&](Shader& shader) {
 			shader.SetMat4("ModelViewProj", projection * view * modelSponza);
 			shader.SetMat4("ModelViewProjPrev", modelViewProjPrevSponza);
 			shader.SetMat3("NormalMatrix", glm::transpose(glm::inverse(Mat3(modelSponza))));
-			shader.SetBool("NormalMapping", g_normalMapping);
+			shader.SetBool("EnableNormalMapping", g_enableNormalMapping);
+			shader.SetVec2("JitterCurr", GetJitter(frameCount));
+			shader.SetVec2("JitterPrev", GetJitter(frameCount - 1));
 		};
 		// geometry pass
 		// -------------
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, fboGeometry);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear color as well, because I don't render skybox
-
+			glClearTexImage(bufVelocity, 0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
 			passGeometry.Use();
-			SetUniformsBasics(passGeometry);
 			for (GLU i = 1; i <= 3; i++) // diffuse, specular, normal
-				glBindSampler(i, samplerAniso);
-			glBindSampler(4, samplerPoint); // mask
+				glBindSampler(i, samplerAnisoRepeat);
+			glBindSampler(4, samplerPointClamp); // mask
+			SetUniformsBasics(passGeometry);
 			sceneSponza.Draw();
 
 			passGeometryAlphaMasked.Use();
@@ -388,6 +450,73 @@ I32 main() {
 			sceneSponza.DrawWithMask();	
 
 			modelViewProjPrevSponza = projection * view * modelSponza;
+		}
+		// ssao
+		// ----
+		{
+			// downsample depth & velocity
+			{
+				glViewport(0, 0, g_kWScreen/2, g_kHScreen/2);
+				glBindFramebuffer(GL_FRAMEBUFFER, fboDepthDownsample);
+				glNamedFramebufferTexture(fboDepthDownsample, GL_COLOR_ATTACHMENT0, bufDepthHalfResCurr, 0);
+				passDepthVelocityDownsample.Use();
+				glBindTextureUnit(0, bufDepth);
+				glBindTextureUnit(1, bufVelocity);
+				glBindSampler(0, samplerPointClamp);
+				glBindSampler(1, samplerPointClamp);
+				RenderQuad();
+			}
+			// main
+			{
+				glBindFramebuffer(GL_FRAMEBUFFER, fboSsao);
+				glNamedFramebufferTexture(fboSsao, GL_COLOR_ATTACHMENT0, bufSsao, 0);
+				glBindTextureUnit(0, bufDepthHalfResCurr);
+				glBindSampler(0, samplerPointClamp);
+
+				auto GetRadRodationTemporal = [](const U64 frameCount) {
+					const F32 aRotation[] = { 60, 300, 180, 240, 120, 0 };
+					return aRotation[frameCount % 6] / 360 * 2 * 3.14159265358979323846f;
+				};
+
+				passSsao.Use();
+				passSsao.SetMat4("InvProj", glm::inverse(projection));
+				passSsao.SetFloat("WsRadius", g_wsSizeKernelAo);
+				passSsao.SetFloat("RadRotationTemporal", GetRadRodationTemporal(frameCount));
+				passSsao.SetVec4("Scaling", Vec4(g_kWScreen / 2, g_kHScreen / 2, 1. / (g_kWScreen / 2), 1. / (g_kHScreen / 2)));
+				RenderQuad();
+			}
+			// spatial denoiser
+			{
+				glNamedFramebufferTexture(fboSsao, GL_COLOR_ATTACHMENT0, bufSsaoSpatiallyDenoised, 0);
+				glBindTextureUnit(0, bufSsao);
+				glBindTextureUnit(1, bufDepthHalfResCurr);
+				glBindSampler(0, samplerPointClamp);
+				glBindSampler(1, samplerPointClamp);
+				passSsaoSpatialDenoiser.Use();
+				passSsaoSpatialDenoiser.SetFloat("Near", nearPlane);
+				RenderQuad();
+			}
+			// temporal denoiser
+			{
+				glNamedFramebufferTexture(fboSsao, GL_COLOR_ATTACHMENT0, bufSsaoAccCurr, 0);
+				glBindTextureUnit(0, bufSsaoSpatiallyDenoised);
+				glBindTextureUnit(1, bufSsaoAccPrev);
+				glBindTextureUnit(2, bufVelocityHalfRes);
+				glBindTextureUnit(3, bufDepthHalfResCurr);
+				glBindTextureUnit(4, bufDepthHalfResPrev);
+				glBindSampler(0, samplerPointClamp);
+				glBindSampler(1, samplerLinearClamp);
+				glBindSampler(2, samplerPointClamp);
+				glBindSampler(3, samplerPointClamp);
+				glBindSampler(4, samplerPointClamp);
+				passSsaoTemporalDenoiser.Use();
+				passSsaoTemporalDenoiser.SetFloat("RateOfChange", g_rateOfChangeAo);
+				passSsaoTemporalDenoiser.SetFloat("Near", nearPlane);
+				passSsaoTemporalDenoiser.SetVec2("Scaling", Vec2(g_kWScreen / 2, g_kHScreen / 2));
+				RenderQuad();
+			}
+			glViewport(0, 0, g_kWScreen, g_kHScreen);
+			std::swap(bufDepthHalfResCurr, bufDepthHalfResPrev);
 		}
 		// deffered pass + generate mipmaps for bufDiffuseLight
 		// ----------------------------------------------------
@@ -405,40 +534,40 @@ I32 main() {
 				Vec3(50),
 				Vec3(50)
 			};
-			auto SetUniformsShadingPass = [&](Shader& shader) {
-				shader.SetVec3("WsPosCamera", g_camera.GetWsPosition());
-
-				shader.SetVec3("WsDirLight", -wsDirLight);	// notice "-"
-				shader.SetVec3("ColorDirLight", Vec3(3));
-				shader.SetFloatArr("AVsFarCascade", aVsFarCascade.data(), g_kNumCascades);
-				shader.SetMat4("ReferenceShadowMatrix", referenceMatrix);
-				shader.SetVec3Arr("AScaleCascade", aScaleCascade.data(), aScaleCascade.size());
-				shader.SetVec3Arr("AOffsetCascade", aOffsetCascade.data(), aOffsetCascade.size());
-				shader.SetFloat("WidthLight", g_widthLight);
-
-				shader.SetFloat("Bias", g_bias);
-				shader.SetFloat("ScaleNormalOffsetBias", g_scaleNormalOffsetBias);
-				shader.SetFloat("SizeFilter", g_sizeFilter);
-				shader.SetVec3Arr("AWsPointLightPosition", aWsPointLightPosition.data(), aWsPointLightPosition.size());
-				shader.SetVec3Arr("APointLightColor", aLightColor.data(), aLightColor.size());
-			};
 
 			glBindFramebuffer(GL_FRAMEBUFFER, fboDeffered);
 			passShading.Use();
-			SetUniformsShadingPass(passShading);
-			passShading.SetMat4("InvViewProj", glm::inverse(projection * view));
+			passShading.SetVec3("WsPosCamera", g_camera.GetWsPosition());
+
+			passShading.SetVec3("WsDirLight", -wsDirLight);	// notice "-"
+			passShading.SetVec3("ColorDirLight", Vec3(3));
+			passShading.SetFloatArr("AVsFarCascade", aVsFarCascade.data(), g_kNumCascades);
+			passShading.SetMat4("ReferenceShadowMatrix", referenceMatrix);
+			passShading.SetVec3Arr("AScaleCascade", aScaleCascade.data(), aScaleCascade.size());
+			passShading.SetVec3Arr("AOffsetCascade", aOffsetCascade.data(), aOffsetCascade.size());
+			passShading.SetFloat("WidthLight", g_widthLight);
+
+			passShading.SetFloat("Bias", g_bias);
+			passShading.SetFloat("ScaleNormalOffsetBias", g_scaleNormalOffsetBias);
+			passShading.SetFloat("SizeFilter", g_sizeFilterShadow);
+			passShading.SetVec3Arr("AWsPointLightPosition", aWsPointLightPosition.data(), aWsPointLightPosition.size());
+			passShading.SetVec3Arr("APointLightColor", aLightColor.data(), aLightColor.size());
+			passShading.SetMat4("InvViewProj", glm::inverse(projection* view));
 			passShading.SetFloat("Near", nearPlane);
+			passShading.SetBool("EnableAO", g_enableAO);
 			glBindTextureUnit(0, bufDiffuseSpec);
 			glBindTextureUnit(1, bufNormal);
 			glBindTextureUnit(2, bufDepth);
 			glBindTextureUnit(3, bufDepthShadow);
 			glBindTextureUnit(4, bufDepthShadow);
 			glBindTextureUnit(5, bufRandomAngles); // lack of sampler is intentional
-			glBindSampler(0, samplerPoint);
-			glBindSampler(1, samplerPoint);
-			glBindSampler(2, samplerPoint);
+			glBindTextureUnit(6, bufSsaoAccCurr);
+			glBindSampler(0, samplerPointClamp);
+			glBindSampler(1, samplerPointClamp);
+			glBindSampler(2, samplerPointClamp);
 			glBindSampler(3, samplerShadowPCF);
 			glBindSampler(4, samplerShadowDepth);
+			glBindSampler(6, samplerPointClamp);
 			
 			glDisable(GL_DEPTH_TEST); // also disables depth writes
 			RenderQuad();
@@ -446,24 +575,29 @@ I32 main() {
 			
 			glGenerateTextureMipmap(bufDiffuseLight);
 		}
+		std::swap(bufSsaoAccCurr, bufSsaoAccPrev);
 		// apply exposure, tone mapping and gamma correction
 		// -------------------------------------------------
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, fboBack);
 
-			if (g_debug) {
+			if (g_showShadowMap) {
 				glBindTextureUnit(2, bufDepthShadow);
 				glBindSampler(2, samplerShadowDepth);
-				passExposureToneGamma.SetUInt("IdxCascade", g_debugCascadeIdx);
+				passExposureToneGamma.SetUInt("IdxCascade", g_cascadeIdx);
+			} else if (g_showAO) {
+				glBindTextureUnit(0, bufSsaoAccCurr);
+				glBindSampler(0, samplerPointClamp);
 			} else {
 				glBindTextureUnit(0, bufHdr);
 				glBindTextureUnit(1, bufDiffuseLight);
-				glBindSampler(0, samplerPoint);
-				glBindSampler(1, samplerTrilinear);
+				glBindSampler(0, samplerPointClamp);
+				glBindSampler(1, samplerTrilinearClamp);
 				passExposureToneGamma.SetFloat("Exposure", g_exposure);
 				passExposureToneGamma.SetFloat("LevelLastMipMap", log2f(g_kWScreen));
 			}
-			passExposureToneGamma.SetBool("Debug", g_debug);
+			passExposureToneGamma.SetBool("ShowShadowMap", g_showShadowMap);
+			passExposureToneGamma.SetBool("ShowAO", g_showAO);
 			passExposureToneGamma.Use();
 			glEnable(GL_FRAMEBUFFER_SRGB);
 			RenderQuad();
@@ -472,7 +606,7 @@ I32 main() {
 		
 		// SMAA
 		// ----
-		if (g_smaa != Smaa::None) {
+		if (g_smaa != Smaa::None && !g_showShadowMap && !g_showAO) {
 			glClearTexImage(bufSmaaEdge, 0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
 			glClearTexImage(bufSmaaBlend, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 			glClearTexImage(bufStencil, 0, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, nullptr);
@@ -488,7 +622,7 @@ I32 main() {
 					glBindFramebuffer(GL_FRAMEBUFFER, fboSmaa);
 					glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaEdge, 0);
 					glBindTextureUnit(0, bufLdr);
-					glBindSampler(0, samplerPoint);
+					glBindSampler(0, samplerPointClamp);
 					passSmaaEdge.Use();
 					RenderQuad();
 				}
@@ -505,13 +639,13 @@ I32 main() {
 					auto GetSubsampleIndices = [](U64 frame) {
 						const Vec4 indicies[2] = { Vec4(1, 1, 1, 0),
 												   Vec4(2, 2, 2, 0) };
-						if (g_smaaSubsambleIndicies)
+						if (g_enableSmaaSubsambleIndicies)
 							return indicies[frame % 2];
 						else
 							return Vec4(0);
 					};
 					passSmaaBlending.Use();
-					passSmaaBlending.SetVec4("SubsampleIndices", GetSubsampleIndices(frameNumber));
+					passSmaaBlending.SetVec4("SubsampleIndices", GetSubsampleIndices(frameCount));
 					RenderQuad();
 					glDisable(GL_STENCIL_TEST);
 				}
@@ -523,7 +657,7 @@ I32 main() {
 					glBindTextureUnit(2, bufVelocity);
 					glBindSampler(0, samplerSMAA);
 					glBindSampler(1, samplerSMAA);
-					glBindSampler(2, samplerPoint);
+					glBindSampler(2, samplerPointClamp);
 					passSmaaNeighborhood.Use();
 					glEnable(GL_FRAMEBUFFER_SRGB);
 					RenderQuad();
@@ -539,9 +673,9 @@ I32 main() {
 					glBindTextureUnit(0, bufSmaaCurrentSrgb);
 					glBindTextureUnit(1, bufSmaaPreviousSrgb);
 					glBindTextureUnit(2, bufVelocity);
-					glBindSampler(0, samplerPoint);
+					glBindSampler(0, samplerPointClamp);
 					glBindSampler(1, samplerSMAA);
-					glBindSampler(2, samplerPoint);
+					glBindSampler(2, samplerPointClamp);
 
 					passSmaaTemporal.Use();
 					glEnable(GL_FRAMEBUFFER_SRGB);
@@ -553,7 +687,7 @@ I32 main() {
 				// pass through to back buffer
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
 				glBindTextureUnit(0, bufSmaaCurrentSrgb);
-				glBindSampler(0, samplerPoint);
+				glBindSampler(0, samplerPointClamp);
 				passPassThrough.Use();
 				glEnable(GL_FRAMEBUFFER_SRGB);
 				RenderQuad();
@@ -566,7 +700,7 @@ I32 main() {
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glBindTextureUnit(0, bufLdr);
-			glBindSampler(0, samplerPoint);
+			glBindSampler(0, samplerPointClamp);
 			passPassThrough.Use();
 			RenderQuad();
 		}
@@ -706,17 +840,21 @@ void CallbackKeyboard(GLFWwindow* window, I32 key, I32 scancode, I32 action, I32
 		return;
 
 	if (key == GLFW_KEY_G)
-		g_debug = !g_debug;
+		g_showShadowMap = !g_showShadowMap;
 
 	if (key == GLFW_KEY_H)
-		g_debugCascadeIdx = (g_debugCascadeIdx + 1) % g_kNumCascades;
+		g_cascadeIdx = (g_cascadeIdx + 1) % g_kNumCascades;
 
 	if (key == GLFW_KEY_N)
-		g_normalMapping = !g_normalMapping;
+		g_enableNormalMapping = !g_enableNormalMapping;
 	if (key == GLFW_KEY_Z)
 		g_smaa = Smaa((static_cast<I32>(g_smaa) + 1) % 3);
 	if (key == GLFW_KEY_X)
-		g_smaaSubsambleIndicies = !g_smaaSubsambleIndicies;
+		g_enableSmaaSubsambleIndicies = !g_enableSmaaSubsambleIndicies;
+	if (key == GLFW_KEY_F1)
+		g_enableAO = !g_enableAO;
+	if (key == GLFW_KEY_F2)
+		g_showAO = !g_showAO;
 }
 
 void CallbackMessage(GLE source, GLE type, GLU id, GLE severity, GLS length,
@@ -772,16 +910,28 @@ void ProcessInput(GLFWwindow* window, F32 deltaTime)
 		g_scaleNormalOffsetBias += 1.f;
 
 	if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
-		g_sizeFilter -= 0.1f;
+		g_sizeFilterShadow -= 0.1f;
 	if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
-		g_sizeFilter += 0.1f;
-	g_sizeFilter = glm::clamp(g_sizeFilter, 1.f, 200.f);
+		g_sizeFilterShadow += 0.1f;
+	g_sizeFilterShadow = glm::clamp(g_sizeFilterShadow, 1.f, 200.f);
 
 	if (glfwGetKey(window, GLFW_KEY_COMMA) == GLFW_PRESS)
 		g_widthLight -= 20;
 	if (glfwGetKey(window, GLFW_KEY_PERIOD) == GLFW_PRESS)
 		g_widthLight += 20;
 	g_widthLight = glm::clamp(g_widthLight, 0.1f, 200000.f);
+
+	if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS)
+		g_wsSizeKernelAo -= 0.1;
+	if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS)
+		g_wsSizeKernelAo += 0.1;
+	g_wsSizeKernelAo = glm::clamp<F32>(g_wsSizeKernelAo, 0, 50);
+	
+	if (glfwGetKey(window, GLFW_KEY_I) == GLFW_PRESS)
+		g_rateOfChangeAo -= 0.01;
+	if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS)
+		g_rateOfChangeAo += 0.01;
+	g_rateOfChangeAo = glm::clamp<F32>(g_rateOfChangeAo, 0.01, 1);
 }
 
 // renders a quad over whole image

@@ -1,0 +1,15 @@
+//? #version 420
+
+vec3 WsPosFromCsDepth(float csDepth, vec2 uv, mat4 invViewProj) {
+	const vec4 wsPos = invViewProj * vec4(uv * 2 - 1, csDepth, 1);
+	return wsPos.xyz / wsPos.w;
+}
+
+vec3 VsPosFromCsDepth(float depth, vec2 uv, mat4 invProj) {
+	const vec4 vsPos = invProj * vec4(uv * 2 - 1, depth, 1);
+	return vsPos.xyz / vsPos.w;
+}
+
+float VsDepthFromCsDepth(float clipSpaceDepth, float near) {
+	return -near / clipSpaceDepth;
+}

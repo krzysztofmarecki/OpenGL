@@ -2,7 +2,7 @@
 
 Various graphic effects implemented in OpenGL.
 
-![](https://i.ibb.co/jbZBCp1/Bez-tytu-u.png)
+![](https://i.ibb.co/BNXR493/Bez-tytu-u.png)
 
 #### Shadow mapping
 - PCF (2 modes)
@@ -28,6 +28,18 @@ Various graphic effects implemented in OpenGL.
 
 &#42; A Sampling of Shadow Techniques https://therealmjp.github.io/posts/shadow-maps/  
 &#42;&#42; Playing with Real-Time Shadows https://www.realtimeshadows.com/sites/default/files/Playing%20with%20Real-Time%20Shadows_0.pdf
+
+#### GTAO
+- Temporal supersampling
+- Half resolution
+- During downsampling depth take farthest value
+    - reduces occlusion on thin objects without affecting others
+    - reduces halo
+- During ray marching take farthest depth from Gather
+    - reduces occlusion on thin objects without affecting others
+
+https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf
+https://blog.selfshadow.com/publications/s2016-shading-course/activision/s2016_pbs_activision_occlusion.pptx
 #### SMAA integration
 - T2x, 1x
 - blend weights looks different than in reference demo&#42; due to clip origin in lower left corner
@@ -74,6 +86,11 @@ Press
 "," and "." to decrease/increase size of ligh source for PCSS  
 "Z" to cycle through no AA, Smaa 1x, Smaa T2x
 "X" to toggle subsample indicies for Smaa
+"F1" to toggle ambient occlusion
+"F2" to show only ambient occlusion
+"V" and "B" to decrease/increase size of kernel for ambient occlusion
+"I" and "O" to decrease/increase rate of change of temporal supersampling for ambient occlusion
+
 Scroll mouse wheel to change FOV.
 
 
