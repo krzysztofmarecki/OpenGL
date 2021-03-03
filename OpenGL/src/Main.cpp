@@ -28,6 +28,8 @@ std::array<Mat4, g_kNumCascades>
 CalculateCascadeViewProj(const std::array<F32, g_kNumCascades + 1> & limitsCascade, const Camera & g_camera, const F32 sShadowMap, const Vec3 dirLight);
 std::array<F32, g_kNumCascades + 1>
 CalculateVsLimitsCascade(F32 nearPlane, F32 farPlane);
+Vec4
+CalculateToneMappingParamsLottes(F32 whitePoint);
 
 void CallbackMouse(GLFWwindow* window, F64 xpos, F64 ypos);
 void CallbackScroll(GLFWwindow* window, F64 xoffset, F64 yoffset);
@@ -38,7 +40,7 @@ void RenderQuad();
 
 Camera	g_camera(Vec3(0.0f, 0.0f, 3.0f));
 
-F32		g_exposure = 0.1f;
+F32		g_exposure = 0.35;
 Bool	g_enableNormalMapping = true;
 F32		g_bias = 0.0;
 F32		g_scaleNormalOffsetBias = 0;
@@ -292,21 +294,21 @@ I32 main() {
 	Shader passDirectShadowAlphaMasked("src/shaders/shadow.vert", "src/shaders/shadow.frag", "", macroDefineAlphaMasked);
 	Shader passGeometry("src/shaders/geometry.vert", "src/shaders/geometry.frag");
 	Shader passGeometryAlphaMasked("src/shaders/geometry.vert", "src/shaders/geometry.frag", "", macroDefineAlphaMasked);
-	Shader passShading("src/shaders/final.vert", "src/shaders/shading.frag");
-	Shader passExposureToneGamma("src/shaders/final.vert", "src/shaders/final.frag");
-	Shader passPassThrough("src/shaders/final.vert", "src/shaders/passThrough.frag");
+	Shader passShading("src/shaders/uv.vert", "src/shaders/shading.frag");
+	Shader passExposureTone("src/shaders/uv.vert", "src/shaders/exposureToneMap.frag");
+	Shader passPassThrough("src/shaders/uv.vert", "src/shaders/passThrough.frag");
 
-	Shader passDepthVelocityDownsample("src/shaders/final.vert", "src/shaders/depthVelocityDownsample.frag");
-	Shader passSsao("src/shaders/final.vert", "src/shaders/gtao.frag");
-	Shader passSsaoSpatialDenoiser("src/shaders/final.vert", "src/shaders/gtaoSpatialDenoiser.frag");
-	Shader passSsaoTemporalDenoiser("src/shaders/final.vert", "src/shaders/gtaoTemporalDenoiser.frag");
+	Shader passDepthVelocityDownsample("src/shaders/uv.vert", "src/shaders/depthVelocityDownsample.frag");
+	Shader passSsao("src/shaders/uv.vert", "src/shaders/gtao.frag");
+	Shader passSsaoSpatialDenoiser("src/shaders/uv.vert", "src/shaders/gtaoSpatialDenoiser.frag");
+	Shader passSsaoTemporalDenoiser("src/shaders/uv.vert", "src/shaders/gtaoTemporalDenoiser.frag");
 
 	const std::string macroDefineSmaa = std::string("#define g_kWScreen ") + std::to_string(g_kWScreen) + "\n"
 		"#define g_kHScreen " + std::to_string(g_kHScreen) + "\n#define SMAA_REPROJECTION 1";
 	Shader passSmaaEdge("src/shaders/smaaEdgeDetection.vert", "src/shaders/smaaEdgeDetection.frag", "", macroDefineSmaa);
 	Shader passSmaaBlending("src/shaders/smaaBlendingWeightCalculation.vert", "src/shaders/smaaBlendingWeightCalculation.frag", "", macroDefineSmaa);
 	Shader passSmaaNeighborhood("src/shaders/smaaNeighborhoodBlending.vert", "src/shaders/smaaNeighborhoodBlending.frag", "", macroDefineSmaa);
-	Shader passSmaaTemporal("src/shaders/smaaTemporalResolve.vert", "src/shaders/smaaTemporalResolve.frag", "", macroDefineSmaa);
+	Shader passSmaaTemporal("src/shaders/uv.vert", "src/shaders/smaaTemporalResolve.frag", "", macroDefineSmaa);
 
 	GLU samplerAnisoRepeat;
 	glCreateSamplers(1, &samplerAnisoRepeat);
@@ -584,7 +586,7 @@ I32 main() {
 			if (g_showShadowMap) {
 				glBindTextureUnit(2, bufDepthShadow);
 				glBindSampler(2, samplerShadowDepth);
-				passExposureToneGamma.SetUInt("IdxCascade", g_cascadeIdx);
+				passExposureTone.SetUInt("IdxCascade", g_cascadeIdx);
 			} else if (g_showAO) {
 				glBindTextureUnit(0, bufSsaoAccCurr);
 				glBindSampler(0, samplerPointClamp);
@@ -593,12 +595,18 @@ I32 main() {
 				glBindTextureUnit(1, bufDiffuseLight);
 				glBindSampler(0, samplerPointClamp);
 				glBindSampler(1, samplerTrilinearClamp);
-				passExposureToneGamma.SetFloat("Exposure", g_exposure);
-				passExposureToneGamma.SetFloat("LevelLastMipMap", log2f(g_kWScreen));
 			}
-			passExposureToneGamma.SetBool("ShowShadowMap", g_showShadowMap);
-			passExposureToneGamma.SetBool("ShowAO", g_showAO);
-			passExposureToneGamma.Use();
+			passExposureTone.SetFloat("Exposure", g_exposure);
+			passExposureTone.SetFloat("LevelLastMipMap", log2f(g_kWScreen));
+			passExposureTone.SetBool("ShowShadowMap", g_showShadowMap);
+			passExposureTone.SetBool("ShowAO", g_showAO);
+			const F32 kWhitePoint = 10;
+			passExposureTone.SetVec4("ParamsLottes", CalculateToneMappingParamsLottes(kWhitePoint));
+			passExposureTone.SetFloat("WhitePoint", kWhitePoint);
+			// cross talk curve (x^2 / (x+CrossTalkCoefficient)) will reach 1 at white point
+			passExposureTone.SetFloat("CrossTalkCoefficient", kWhitePoint * (kWhitePoint - 1));
+
+			passExposureTone.Use();
 			glEnable(GL_FRAMEBUFFER_SRGB);
 			RenderQuad();
 			glDisable(GL_FRAMEBUFFER_SRGB);
@@ -817,6 +825,28 @@ std::array<F32, g_kNumCascades + 1> CalculateVsLimitsCascade(const F32 nearPlane
 	}
 
 	return limitsCascade;
+}
+
+Vec4 CalculateToneMappingParamsLottes(F32 whitePoint)
+{
+	// from https://github.com/Opioid/tonemapper/blob/master/tonemapper.py
+	const F32 a = 1.1; // contrast
+	const F32 d = 0.97; // shoulder
+	const F32 ad = a * d;
+	const F32 mid_in = 0.3;
+	const F32 mid_out = 0.18;
+
+	const F32 midi_pow_a = powf(mid_in, a);
+	const F32 midi_pow_ad = powf(mid_in, ad);
+	const F32 hdrm_pow_a = powf(whitePoint, a);
+	const F32 hdrm_pow_ad = powf(whitePoint, ad);
+	const F32 u = hdrm_pow_ad * mid_out - midi_pow_ad * mid_out;
+	const F32 v = midi_pow_ad * mid_out;
+
+	const F32 b = -((-midi_pow_a + (mid_out * (hdrm_pow_ad * midi_pow_a - hdrm_pow_a * v)) / u) / v);
+	const F32 c = (hdrm_pow_ad * midi_pow_a - hdrm_pow_a * v) / u;
+
+	return Vec4(a, b, c, d);
 }
 
 void CallbackMouse(GLFWwindow* window, F64 xpos, F64 ypos) {

@@ -61,12 +61,6 @@
     <None Include="src\shaders\geometry.vert">
       <Filter>Source Files\Shaders</Filter>
     </None>
-    <None Include="src\shaders\final.frag">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
-    <None Include="src\shaders\final.vert">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
     <None Include="src\shaders\geometry.frag">
       <Filter>Source Files\Shaders</Filter>
     </None>
@@ -121,9 +115,6 @@
     <None Include="src\shaders\smaaTemporalResolve.frag">
       <Filter>Source Files\Shaders</Filter>
     </None>
-    <None Include="src\shaders\smaaTemporalResolve.vert">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
     <None Include="src\shaders\depthVelocityDownsample.frag">
       <Filter>Source Files\Shaders</Filter>
     </None>
@@ -137,6 +128,12 @@
       <Filter>Source Files\Shaders</Filter>
     </None>
     <None Include="src\shaders\gtaoTemporalDenoiser.frag">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\exposureToneMap.frag">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\uv.vert">
       <Filter>Source Files\Shaders</Filter>
     </None>
   </ItemGroup>

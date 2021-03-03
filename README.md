@@ -2,7 +2,7 @@
 
 Various graphic effects implemented in OpenGL.
 
-![](https://i.ibb.co/BNXR493/Bez-tytu-u.png)
+![](https://i.ibb.co/qkYfM8g/Bez-tytu-u.png)
 
 #### Shadow mapping
 - PCF (2 modes)
@@ -48,6 +48,11 @@ https://blog.selfshadow.com/publications/s2016-shading-course/activision/s2016_p
 - non zero subsample indicies produce worse edges, hence disabled by default
 
 &#42; https://github.com/iryoku/smaa
+#### Filmic tone mapping
+- Lottes's curve with Bart Wronski's fixes
+- Cross talk uses max(rgb)
+    - blends to pure white at white point
+
 #### Normal mapping
 - world space
 
