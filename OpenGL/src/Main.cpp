@@ -69,13 +69,17 @@ I32 main() {
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_DEPTH_BITS, 0);
 	glfwWindowHint(GLFW_STENCIL_BITS, 0);
-	if constexpr (!g_kVSync)
+	if (g_kVSync)
+		glfwWindowHint(GLFW_DOUBLEBUFFER, GL_TRUE);
+	else
 		glfwWindowHint(GLFW_DOUBLEBUFFER, GL_FALSE);
 	GLFWwindow* window = glfwCreateWindow(g_kWScreen, g_kHScreen, "LearnOpenGL", nullptr, nullptr);
 	if (window == nullptr)
 		assert(false && "Failed to create GLFW window");
 
 	glfwMakeContextCurrent(window);
+	if (g_kVSync)
+		glfwSwapInterval(1);
 	glfwSetCursorPosCallback(window, CallbackMouse);
 	glfwSetScrollCallback(window, CallbackScroll);
 	glfwSetKeyCallback(window, CallbackKeyboard);
@@ -715,7 +719,7 @@ I32 main() {
 
 		// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
 		// -------------------------------------------------------------------------------
-		if constexpr (g_kVSync)
+		if (g_kVSync)
 			glfwSwapBuffers(window);
 		else
 			glFlush();
