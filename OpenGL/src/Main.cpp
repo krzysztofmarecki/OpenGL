@@ -414,14 +414,14 @@ I32 main() {
 			// premultiplied by 2
 			const Vec2 aJitter[2] = { Vec2( 0.5, 0.5),
 									  Vec2(-0.5,-0.5) };
-			return aJitter[frameCount % 2] * Vec2(1.f / g_kWScreen, 1.f / g_kHScreen);
+			if (g_smaa == Smaa::T2x)
+				return aJitter[frameCount % 2] * Vec2(1.f / g_kWScreen, 1.f / g_kHScreen);
+			else
+				return Vec2(0);
 		};
 		auto JitterProjection = [&GetJitter](const Mat4& proj, const U64 frameCount) {
 			const Vec2 jitter = GetJitter(frameCount);
-			if (g_smaa == Smaa::T2x)
-				return glm::translate(glm::identity<Mat4>(), Vec3(jitter, 0)) * proj;
-			else
-				return proj;
+			return glm::translate(glm::identity<Mat4>(), Vec3(jitter, 0)) * proj;
 		};
 		const float nearPlane = 0.1;
 		const Mat4 projection = JitterProjection(CalculateInfReversedZProj(g_camera, (F32)g_kWScreen / (F32)g_kHScreen, nearPlane), frameCount);
