@@ -33,9 +33,6 @@
     <ClInclude Include="src\types.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\shaders\SMAA.h">
-      <Filter>Source Files\Shaders</Filter>
-    </ClInclude>
     <ClInclude Include="src\error.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -88,34 +85,10 @@
     <None Include="src\shaders\normals.gl">
       <Filter>Source Files\Shaders</Filter>
     </None>
-    <None Include="src\shaders\smaaSettings.gl">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
     <None Include="src\shaders\passThrough.frag">
       <Filter>Source Files\Shaders</Filter>
     </None>
-    <None Include="src\shaders\smaaBlendingWeightCalculation.frag">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
-    <None Include="src\shaders\smaaBlendingWeightCalculation.vert">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
-    <None Include="src\shaders\smaaEdgeDetection.frag">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
-    <None Include="src\shaders\smaaEdgeDetection.vert">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
-    <None Include="src\shaders\smaaNeighborhoodBlending.frag">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
-    <None Include="src\shaders\smaaNeighborhoodBlending.vert">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
     <None Include="src\shaders\gamma.gl">
-      <Filter>Source Files\Shaders</Filter>
-    </None>
-    <None Include="src\shaders\smaaTemporalResolve.frag">
       <Filter>Source Files\Shaders</Filter>
     </None>
     <None Include="src\shaders\depthVelocityDownsample.frag">
@@ -137,6 +110,9 @@
       <Filter>Source Files\Shaders</Filter>
     </None>
     <None Include="src\shaders\uv.vert">
+      <Filter>Source Files\Shaders</Filter>
+    </None>
+    <None Include="src\shaders\taa.frag">
       <Filter>Source Files\Shaders</Filter>
     </None>
   </ItemGroup>

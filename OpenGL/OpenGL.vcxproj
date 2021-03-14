@@ -24,7 +24,6 @@
     <ClInclude Include="src\Mesh.h" />
     <ClInclude Include="src\Model.h" />
     <ClInclude Include="src\Shader.h" />
-    <ClInclude Include="src\shaders\SMAA.h" />
     <ClInclude Include="src\types.h" />
   </ItemGroup>
   <ItemGroup>
@@ -46,19 +45,12 @@
     <None Include="src\shaders\shading.frag" />
     <None Include="src\shaders\shadow.frag" />
     <None Include="src\shaders\exposureToneMap.frag" />
+    <None Include="src\shaders\taa.frag" />
     <None Include="src\shaders\uv.vert" />
     <None Include="src\shaders\geometry.frag" />
     <None Include="src\shaders\geometry.vert" />
     <None Include="src\shaders\shadow.vert" />
     <None Include="src\shaders\shadows.gl" />
-    <None Include="src\shaders\smaaBlendingWeightCalculation.frag" />
-    <None Include="src\shaders\smaaBlendingWeightCalculation.vert" />
-    <None Include="src\shaders\smaaEdgeDetection.frag" />
-    <None Include="src\shaders\smaaEdgeDetection.vert" />
-    <None Include="src\shaders\smaaNeighborhoodBlending.frag" />
-    <None Include="src\shaders\smaaNeighborhoodBlending.vert" />
-    <None Include="src\shaders\smaaSettings.gl" />
-    <None Include="src\shaders\smaaTemporalResolve.frag" />
     <None Include="src\shaders\gtao.frag" />
     <None Include="src\shaders\gtaoSpatialDenoiser.frag" />
     <None Include="src\shaders\gtaoTemporalDenoiser.frag" />

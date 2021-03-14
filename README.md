@@ -2,14 +2,14 @@
 
 Various graphic effects implemented in OpenGL.
 
-![](https://i.ibb.co/qkYfM8g/Bez-tytu-u.png)
+![](https://i.ibb.co/LQ4m8Fk/Bez-tytu-u.png)
 
 #### Shadow mapping
 - PCF (2 modes)
   - Disc sampling
     - 16x16x16 3D texture of random rotations tiled in world space
     - Vogel disc
-      - Produces smoother penumbra than Poisson disc
+      - Produses smoother penumbra than Poisson disc
       - Tiling is less visible than with Poisson disc
       - Poisson disc as fallback option is available in shader
   - Optimized fixed texel size PCF kernel using GatherCmp &#42;
@@ -40,14 +40,16 @@ Various graphic effects implemented in OpenGL.
 
 https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf
 https://blog.selfshadow.com/publications/s2016-shading-course/activision/s2016_pbs_activision_occlusion.pptx
-#### SMAA integration
-- T2x, 1x
-- blend weights looks different than in reference demo&#42; due to clip origin in lower left corner
-  - with upper left looks the same
-- for 1x final image exactly matches reference demo
-- non zero subsample indicies produce worse edges, hence disabled by default
+#### TAA
+- 8x subpixel jittering using Halton(2, 3)
+- neighborhood clipping in YCoCg
+- disocclusion detection via depth desting
+    - closest depth in current neighborhood
+    - single depth from history
+        - produses less flickering for some reason
+- closest velocity
+- distance to clamp
 
-&#42; https://github.com/iryoku/smaa
 #### Filmic tone mapping
 - Lottes's curve with Bart Wronski's fixes
 - Cross talk uses max(rgb)
@@ -89,8 +91,7 @@ Press
 "R" and "T" to decrease/increase bias (constant value added to normalized depth)  
 "Y" and "U" to decrease/increase scale of normal offset bias  
 "," and "." to decrease/increase size of ligh source for PCSS  
-"Z" to cycle through no AA, Smaa 1x, Smaa T2x
-"X" to toggle subsample indicies for Smaa
+"Z" to cycle toggle TAA
 "F1" to toggle ambient occlusion
 "F2" to show only ambient occlusion
 "V" and "B" to decrease/increase size of kernel for ambient occlusion

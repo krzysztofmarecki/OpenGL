@@ -16,9 +16,6 @@
 #include <random>						// std::random_device, std::mt19937, std::uniform_real_distribution
 #include <iostream>						// std::cout, fprintf
 
-#include "../models/AreaTex.h"			// SMAA
-#include "../models/SearchTex.h"		// SMAA
-
 // settings
 const U32 g_kWScreen = 1920;
 const U32 g_kHScreen = 1080;
@@ -45,21 +42,21 @@ F32		g_exposure = 0.35;
 Bool	g_enableNormalMapping = true;
 F32		g_bias = 0.0;
 F32		g_scaleNormalOffsetBias = 0;
-// debug shader globals
+
 Bool	g_showShadowMap = false;
 I32		g_cascadeIdx = 0;
 
 Vec3	g_wsPosSun(217, 265, -80);
 F32		g_sizeFilterShadow = 15;
 F32		g_widthLight = 800;
-enum class Smaa { None = 0, x1 = 1, T2x = 2 };
-Smaa	g_smaa = Smaa::T2x;
-Bool	g_enableSmaaSubsambleIndicies = false;
 
-F32		g_wsSizeKernelAo = 3.5;
-F32		g_rateOfChangeAo = 0.11;
+F32		g_wsSizeKernelAO = 3.5;
+F32		g_rateOfChangeAO = 0.11;
 Bool	g_enableAO = true;
 Bool	g_showAO = false;
+
+F32		g_rateOfChangeTAA = 0.05;
+Bool	g_tAA = true;
 
 int main() {
 	// glfw: initialize and configure
@@ -97,7 +94,7 @@ int main() {
 	glDebugMessageCallback(CallbackMessage, nullptr);
 
 	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_GEQUAL);					// // 1 near, 0 far
+	glDepthFunc(GL_GEQUAL);					// 1 near, 0 far
 	glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
 	//glDepthRange(0, 1);					// it's default
 	glClearDepth(0.f);						
@@ -134,7 +131,7 @@ int main() {
 	
 	// create and configure framebuffers
 	// ---------------------------------
-	auto CreateConfigureFrameBuffer = [](std::vector<GLU> aCollorAtt, GLU depthAtt = 0) {
+	auto CreateConfigureFrameBuffer = [](std::vector<GLU> aCollorAtt, GLU depthAtt = 0, Bool isDepthLayerd = false) {
 		std::vector<GLU> aAttachment;
 		for (Size i = 0; i < aCollorAtt.size(); i++)
 			aAttachment.push_back(GL_COLOR_ATTACHMENT0 + i);
@@ -143,26 +140,22 @@ int main() {
 		glNamedFramebufferDrawBuffers(fbo, aAttachment.size(), aAttachment.data());
 		for (Size i = 0; i < aAttachment.size(); i++)
 			glNamedFramebufferTexture(fbo, GL_COLOR_ATTACHMENT0+i, aCollorAtt[i], 0);
-		if (depthAtt != 0)
-			glNamedFramebufferTexture(fbo, GL_DEPTH_ATTACHMENT, depthAtt, 0);
+		if (depthAtt != 0) {
+			if (isDepthLayerd)
+				glNamedFramebufferTextureLayer(fbo, GL_DEPTH_ATTACHMENT, depthAtt, 0, 0);
+			else
+				glNamedFramebufferTexture(fbo, GL_DEPTH_ATTACHMENT, depthAtt, 0);
+		}
+
+		if (glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			PrintErrorAndAbort("Framebuffer not complete!");
+
 		return fbo;
 	};
 
 	const GLU fboGeometry = CreateConfigureFrameBuffer({ bufDiffuseSpec, bufNormal, bufVelocity }, bufDepth);
 	const GLU fboDeffered = CreateConfigureFrameBuffer({ bufHdr, bufDiffuseLight });
-	GLU fboBack;
-	glCreateFramebuffers(1, &fboBack);
-	glNamedFramebufferDrawBuffer(fboBack, GL_COLOR_ATTACHMENT0);
-	glNamedFramebufferTexture(fboBack, GL_COLOR_ATTACHMENT0, bufLdrSrgb, 0);
-
-	auto AssertFBOIsComplete = [](GLU fbo) {
-		if (glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			PrintErrorAndAbort("Framebuffer not complete!");
-	};
-
-	AssertFBOIsComplete(fboGeometry);
-	AssertFBOIsComplete(fboDeffered);
-	AssertFBOIsComplete(fboBack);
+	const GLU fboBack = CreateConfigureFrameBuffer({ bufLdrSrgb });
 
 	// create framebuffer for CSM
 	// --------------------------
@@ -170,11 +163,7 @@ int main() {
 	GLS sShadowMap = 2048;
 	glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &bufDepthShadow);
 	glTextureStorage3D(bufDepthShadow, 1, GL_DEPTH_COMPONENT16, sShadowMap, sShadowMap, g_kNumCascades);
-	GLU fboShadowMap;
-	glCreateFramebuffers(1, &fboShadowMap);
-	glNamedFramebufferTexture(fboShadowMap, GL_COLOR_ATTACHMENT0, GL_NONE, 0);
-	glNamedFramebufferTextureLayer(fboShadowMap, GL_DEPTH_ATTACHMENT, bufDepthShadow, 0, 0);
-	AssertFBOIsComplete(fboShadowMap);
+	const GLU fboShadowMap = CreateConfigureFrameBuffer({}, bufDepthShadow, true);
 	
 	// create samplers for shadow mapping
 	GLU samplerShadowDepth;
@@ -223,7 +212,6 @@ int main() {
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufSsao);
 	glTextureStorage2D(bufSsao, 1, GL_R8, g_kWScreen/2, g_kHScreen/2);
 	const GLU fboSsao = CreateConfigureFrameBuffer({ bufSsao });
-	AssertFBOIsComplete(fboSsao);
 
 	GLU bufSsaoSpatiallyDenoised;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufSsaoSpatiallyDenoised);
@@ -249,48 +237,22 @@ int main() {
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufVelocityHalfRes);
 	glTextureStorage2D(bufVelocityHalfRes, 1, GL_RG16F, g_kWScreen / 2, g_kHScreen / 2);
 	const GLU fboDepthDownsample = CreateConfigureFrameBuffer({ bufDepthHalfResCurr, bufVelocityHalfRes });
-	AssertFBOIsComplete(fboDepthDownsample);
 
-	// SMAA
+	// TAA
 	// ----
-	GLU bufSmaaEdge;
-	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaEdge);
-	glTextureStorage2D(bufSmaaEdge, 1, GL_RG8, g_kWScreen, g_kHScreen);
-	GLU bufSmaaBlend;
-	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaBlend);
-	glTextureStorage2D(bufSmaaBlend, 1, GL_RGBA8, g_kWScreen, g_kHScreen);
-	GLU bufStencil;
-	glCreateTextures(GL_TEXTURE_2D, 1, &bufStencil);
-	glTextureStorage2D(bufStencil, 1, GL_STENCIL_INDEX8, g_kWScreen, g_kHScreen);
-	GLU bufSmaaCurrentSrgb;
-	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaCurrentSrgb);
-	glTextureStorage2D(bufSmaaCurrentSrgb, 1, GL_SRGB8_ALPHA8, g_kWScreen, g_kHScreen);
-	GLU bufSmaaPreviousSrgb;
-	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaPreviousSrgb);
-	glTextureStorage2D(bufSmaaPreviousSrgb, 1, GL_SRGB8_ALPHA8, g_kWScreen, g_kHScreen);
+	GLU bufLdrSrgbAccCurr;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufLdrSrgbAccCurr);
+	glTextureStorage2D(bufLdrSrgbAccCurr, 1, GL_SRGB8_ALPHA8, g_kWScreen, g_kHScreen);
+	
+	GLU bufLdrSrgbAccPrev;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufLdrSrgbAccPrev);
+	glTextureStorage2D(bufLdrSrgbAccPrev, 1, GL_SRGB8_ALPHA8, g_kWScreen, g_kHScreen);
 
-	GLU fboSmaa;
-	glCreateFramebuffers(1, &fboSmaa);
-	glNamedFramebufferDrawBuffer(fboSmaa, GL_COLOR_ATTACHMENT0);
-	glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaEdge, 0);
-	glNamedFramebufferTexture(fboSmaa, GL_STENCIL_ATTACHMENT, bufStencil, 0);
-	AssertFBOIsComplete(fboSmaa);
+	GLU bufDepthPrev;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufDepthPrev);
+	glTextureStorage2D(bufDepthPrev, 1, GL_DEPTH_COMPONENT32F, g_kWScreen, g_kHScreen);
 
-	GLU bufSmaaArea;
-	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaArea);
-	glTextureStorage2D(bufSmaaArea, 1, GL_RG8, 160, 560);
-	glTextureSubImage2D(bufSmaaArea, 0, 0, 0, 160, 560, GL_RG, GL_UNSIGNED_BYTE, areaTexBytes);
-	GLU bufSmaaSearch;
-	glCreateTextures(GL_TEXTURE_2D, 1, &bufSmaaSearch);
-	glTextureStorage2D(bufSmaaSearch, 1, GL_R8, 64, 16);
-	glTextureSubImage2D(bufSmaaSearch, 0, 0, 0, 64, 16, GL_RED, GL_UNSIGNED_BYTE, searchTexBytes);
-
-	GLU samplerSMAA;
-	glCreateSamplers(1, &samplerSMAA);
-	glSamplerParameteri(samplerSMAA, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glSamplerParameteri(samplerSMAA, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glSamplerParameteri(samplerSMAA, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glSamplerParameteri(samplerSMAA, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	const GLU fboTaa = CreateConfigureFrameBuffer({ bufLdrSrgbAccCurr });
 
 	// Shaders
 	// -------
@@ -308,12 +270,7 @@ int main() {
 	const Shader passSsaoSpatialDenoiser("uv.vert", "gtaoSpatialDenoiser.frag");
 	const Shader passSsaoTemporalDenoiser("uv.vert", "gtaoTemporalDenoiser.frag");
 
-	const std::string macroDefineSmaa = std::string("#define g_kWScreen ") + std::to_string(g_kWScreen) + "\n"
-		"#define g_kHScreen " + std::to_string(g_kHScreen) + "\n#define SMAA_REPROJECTION 1";
-	const Shader passSmaaEdge("smaaEdgeDetection.vert", "smaaEdgeDetection.frag", "", macroDefineSmaa);
-	const Shader passSmaaBlending("smaaBlendingWeightCalculation.vert", "smaaBlendingWeightCalculation.frag", "", macroDefineSmaa);
-	const Shader passSmaaNeighborhood("smaaNeighborhoodBlending.vert", "smaaNeighborhoodBlending.frag", "", macroDefineSmaa);
-	const Shader passSmaaTemporal("uv.vert", "smaaTemporalResolve.frag", "", macroDefineSmaa);
+	const Shader passTaa("uv.vert", "taa.frag");
 
 	GLU samplerAnisoRepeat;
 	glCreateSamplers(1, &samplerAnisoRepeat);
@@ -356,7 +313,7 @@ int main() {
 		frameTimePrev = frameTimeCurr;
 		ProcessInput(window, deltaTime);
 
-		if constexpr (!g_kVSync)
+		if (!g_kVSync)
 			std::cout << 1. / deltaTime << "\n";
 		
 		// CSM logic
@@ -415,12 +372,20 @@ int main() {
 			glViewport(0, 0, g_kWScreen, g_kHScreen);
 		}
 		auto GetJitter = [](const U64 frameCount) {
-			// flipped y values (from SMAA.h) due to clip origin in lower left corner
-			// premultiplied by 2
-			const Vec2 aJitter[2] = { Vec2( 0.5, 0.5),
-									  Vec2(-0.5,-0.5) };
-			if (g_smaa == Smaa::T2x)
-				return aJitter[frameCount % 2] * Vec2(1.f / g_kWScreen, 1.f / g_kHScreen);
+			auto HaltonSeq = [](I32 prime, I32 idx) {
+				F32 r = 0;
+				F32 f = 1;
+				while (idx > 0) {
+					f /= prime;
+					r += f * (idx % prime);
+					idx /= prime;
+				}
+				return r;
+			};
+			F32 u = HaltonSeq(2, (frameCount % 8) + 1) - 0.5f;
+			F32 v = HaltonSeq(3, (frameCount % 8) + 1) - 0.5f;
+			if (g_tAA)
+				return Vec2(u, v) * Vec2(1./g_kWScreen, 1./g_kHScreen) * 2.f;
 			else
 				return Vec2(0);
 		};
@@ -443,6 +408,7 @@ int main() {
 		// -------------
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, fboGeometry);
+			glNamedFramebufferTexture(fboGeometry, GL_DEPTH_ATTACHMENT, bufDepth, 0);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear color as well, because I don't render skybox
 			glClearTexImage(bufVelocity, 0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
 			passGeometry.Use();
@@ -487,7 +453,7 @@ int main() {
 
 				passSsao.Use();
 				passSsao.SetMat4("InvProj", glm::inverse(projection));
-				passSsao.SetFloat("WsRadius", g_wsSizeKernelAo);
+				passSsao.SetFloat("WsRadius", g_wsSizeKernelAO);
 				passSsao.SetFloat("RadRotationTemporal", GetRadRodationTemporal(frameCount));
 				passSsao.SetVec4("Scaling", Vec4(g_kWScreen / 2, g_kHScreen / 2, 1. / (g_kWScreen / 2), 1. / (g_kHScreen / 2)));
 				RenderQuad();
@@ -517,7 +483,7 @@ int main() {
 				glBindSampler(3, samplerPointClamp);
 				glBindSampler(4, samplerPointClamp);
 				passSsaoTemporalDenoiser.Use();
-				passSsaoTemporalDenoiser.SetFloat("RateOfChange", g_rateOfChangeAo);
+				passSsaoTemporalDenoiser.SetFloat("RateOfChange", g_rateOfChangeAO);
 				passSsaoTemporalDenoiser.SetFloat("Near", nearPlane);
 				passSsaoTemporalDenoiser.SetVec2("Scaling", Vec2(g_kWScreen / 2, g_kHScreen / 2));
 				RenderQuad();
@@ -593,7 +559,7 @@ int main() {
 				glBindSampler(2, samplerShadowDepth);
 				passExposureTone.SetUInt("IdxCascade", g_cascadeIdx);
 			} else if (g_showAO) {
-				glBindTextureUnit(0, bufSsaoAccCurr);
+				glBindTextureUnit(0, bufSsaoAccPrev); // swap above
 				glBindSampler(0, samplerPointClamp);
 			} else {
 				glBindTextureUnit(0, bufHdr);
@@ -617,105 +583,44 @@ int main() {
 			glDisable(GL_FRAMEBUFFER_SRGB);
 		}
 		
-		// SMAA
-		// ----
-		if (g_smaa != Smaa::None && !g_showShadowMap && !g_showAO) {
-			glClearTexImage(bufSmaaEdge, 0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
-			glClearTexImage(bufSmaaBlend, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-			glClearTexImage(bufStencil, 0, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, nullptr);
+		// TAA
+		// ---
+		if (g_tAA) {
+			glBindFramebuffer(GL_FRAMEBUFFER, fboTaa);
+			glNamedFramebufferTexture(fboTaa, GL_COLOR_ATTACHMENT0, bufLdrSrgbAccCurr, 0);
+			passTaa.Use();
+			passTaa.SetFloat("RateOfChange", g_rateOfChangeTAA);
+			passTaa.SetVec4("Scaling", Vec4(g_kWScreen, g_kHScreen, 1. / g_kWScreen, 1. / g_kHScreen));
+			passTaa.SetFloat("Near", nearPlane);
+			glBindTextureUnit(0, bufLdrSrgb);
+			glBindTextureUnit(1, bufLdrSrgbAccPrev);
+			glBindTextureUnit(2, bufVelocity);
+			glBindTextureUnit(3, bufDepth);
+			glBindTextureUnit(4, bufDepthPrev);
+			glBindSampler(0, samplerPointClamp);
+			glBindSampler(1, samplerLinearClamp);
+			glBindSampler(2, samplerPointClamp);
+			glBindSampler(3, samplerPointClamp);
+			glBindSampler(4, samplerPointClamp);
+			glEnable(GL_FRAMEBUFFER_SRGB);
+			RenderQuad();
+			glDisable(GL_FRAMEBUFFER_SRGB);
 
-			// 1x
-			{
-				// edge detection
-				{
-					glEnable(GL_STENCIL_TEST);
-					glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-					glStencilFunc(GL_ALWAYS, 0x01, 0x01);
-					glStencilMask(0x01);
-					glBindFramebuffer(GL_FRAMEBUFFER, fboSmaa);
-					glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaEdge, 0);
-					glBindTextureUnit(0, bufLdr);
-					glBindSampler(0, samplerPointClamp);
-					passSmaaEdge.Use();
-					RenderQuad();
-				}
-				// blending weight calculation
-				{
-					glStencilFunc(GL_EQUAL, 0x01, 0x01);
-					glStencilMask(0);
-					glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaBlend, 0);
-					glBindTextureUnit(0, bufSmaaEdge);
-					glBindTextureUnit(1, bufSmaaArea);
-					glBindTextureUnit(2, bufSmaaSearch);
-					for (int i = 0; i <= 2; i++)
-						glBindSampler(i, samplerSMAA);
-					auto GetSubsampleIndices = [](U64 frame) {
-						const Vec4 indicies[2] = { Vec4(1, 1, 1, 0),
-												   Vec4(2, 2, 2, 0) };
-						if (g_enableSmaaSubsambleIndicies)
-							return indicies[frame % 2];
-						else
-							return Vec4(0);
-					};
-					passSmaaBlending.Use();
-					passSmaaBlending.SetVec4("SubsampleIndices", GetSubsampleIndices(frameCount));
-					RenderQuad();
-					glDisable(GL_STENCIL_TEST);
-				}
-				// neighborhood blending
-				{
-					glNamedFramebufferTexture(fboSmaa, GL_COLOR_ATTACHMENT0, bufSmaaCurrentSrgb, 0);
-					glBindTextureUnit(0, bufLdrSrgb);
-					glBindTextureUnit(1, bufSmaaBlend);
-					glBindTextureUnit(2, bufVelocity);
-					glBindSampler(0, samplerSMAA);
-					glBindSampler(1, samplerSMAA);
-					glBindSampler(2, samplerPointClamp);
-					passSmaaNeighborhood.Use();
-					glEnable(GL_FRAMEBUFFER_SRGB);
-					RenderQuad();
-					glDisable(GL_FRAMEBUFFER_SRGB);
-				}
-			}
-
-			// T2x
-			if (g_smaa == Smaa::T2x) {
-				// temporal resolve
-				{
-					glBindFramebuffer(GL_FRAMEBUFFER, 0);
-					glBindTextureUnit(0, bufSmaaCurrentSrgb);
-					glBindTextureUnit(1, bufSmaaPreviousSrgb);
-					glBindTextureUnit(2, bufVelocity);
-					glBindSampler(0, samplerPointClamp);
-					glBindSampler(1, samplerSMAA);
-					glBindSampler(2, samplerPointClamp);
-
-					passSmaaTemporal.Use();
-					glEnable(GL_FRAMEBUFFER_SRGB);
-					RenderQuad();
-					glDisable(GL_FRAMEBUFFER_SRGB);
-				}
-				std::swap(bufSmaaCurrentSrgb, bufSmaaPreviousSrgb);
-			} else {
-				// pass through to back buffer
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				glBindTextureUnit(0, bufSmaaCurrentSrgb);
-				glBindSampler(0, samplerPointClamp);
-				passPassThrough.Use();
-				glEnable(GL_FRAMEBUFFER_SRGB);
-				RenderQuad();
-				glDisable(GL_FRAMEBUFFER_SRGB);
-			}
-			
+			std::swap(bufLdrSrgbAccCurr, bufLdrSrgbAccPrev);
+			std::swap(bufDepth, bufDepthPrev);
 		}
-		else
 		// pass through to back buffer
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glBindTextureUnit(0, bufLdr);
+			if (g_tAA)
+				glBindTextureUnit(0, bufLdrSrgbAccPrev); // swap above
+			else
+				glBindTextureUnit(0, bufLdrSrgb);
 			glBindSampler(0, samplerPointClamp);
 			passPassThrough.Use();
+			glEnable(GL_FRAMEBUFFER_SRGB);
 			RenderQuad();
+			glDisable(GL_FRAMEBUFFER_SRGB);
 		}
 
 		// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
@@ -883,9 +788,7 @@ void CallbackKeyboard(GLFWwindow* window, I32 key, I32 scancode, I32 action, I32
 	if (key == GLFW_KEY_N)
 		g_enableNormalMapping = !g_enableNormalMapping;
 	if (key == GLFW_KEY_Z)
-		g_smaa = Smaa((static_cast<I32>(g_smaa) + 1) % 3);
-	if (key == GLFW_KEY_X)
-		g_enableSmaaSubsambleIndicies = !g_enableSmaaSubsambleIndicies;
+		g_tAA = !g_tAA;
 	if (key == GLFW_KEY_F1)
 		g_enableAO = !g_enableAO;
 	if (key == GLFW_KEY_F2)
@@ -957,16 +860,16 @@ void ProcessInput(GLFWwindow* window, F32 deltaTime)
 	g_widthLight = glm::clamp(g_widthLight, 0.1f, 200000.f);
 
 	if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS)
-		g_wsSizeKernelAo -= 0.1;
+		g_wsSizeKernelAO -= 0.1;
 	if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS)
-		g_wsSizeKernelAo += 0.1;
-	g_wsSizeKernelAo = glm::clamp<F32>(g_wsSizeKernelAo, 0, 50);
+		g_wsSizeKernelAO += 0.1;
+	g_wsSizeKernelAO = glm::clamp<F32>(g_wsSizeKernelAO, 0, 50);
 	
 	if (glfwGetKey(window, GLFW_KEY_I) == GLFW_PRESS)
-		g_rateOfChangeAo -= 0.01;
+		g_rateOfChangeAO -= 0.01;
 	if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS)
-		g_rateOfChangeAo += 0.01;
-	g_rateOfChangeAo = glm::clamp<F32>(g_rateOfChangeAo, 0.01, 1);
+		g_rateOfChangeAO += 0.01;
+	g_rateOfChangeAO = glm::clamp<F32>(g_rateOfChangeAO, 0.01, 1);
 }
 
 // renders a quad over whole image

@@ -1,3 +1,0 @@
-#define SMAA_RT_METRICS vec4(1.0 / g_kWScreen, 1.0 / g_kHScreen, g_kWScreen, g_kHScreen)
-#define SMAA_GLSL_4
-#define SMAA_PRESET_ULTRA;
