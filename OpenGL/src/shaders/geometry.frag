@@ -33,7 +33,7 @@ void main() {
 	const vec3 wsNormal = GetWsNormal(Input.WsNormal, Input.WsTangent, texture(Normal, Input.UV).rgb);
 	outDiffuseSpec = vec4(colorDiffuse, colorSpecular);
 	outNormal = wsNormal * 0.5 + 0.5;
-	outVelocity = ((Input.PosCur.xy / Input.PosCur.z) - JitterCurr)
-				- ((Input.PosPrev.xy / Input.PosPrev.z) - JitterPrev);
+	outVelocity = (((Input.PosCur.xy / Input.PosCur.z) - JitterCurr)
+				- ((Input.PosPrev.xy / Input.PosPrev.z) - JitterPrev)) * 0.5;
 }
 

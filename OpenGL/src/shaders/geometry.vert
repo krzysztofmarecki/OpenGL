@@ -23,6 +23,4 @@ void main() {
 	gl_Position = ModelViewProj * vec4(inPos, 1);
 	Output.PosCur = gl_Position.xyw;
 	Output.PosPrev = (ModelViewProjPrev * vec4(inPos, 1)).xyw;
-	Output.PosCur.xy *= 0.5;
-	Output.PosPrev.xy *= 0.5;
 }
