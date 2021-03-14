@@ -1,4 +1,5 @@
 #include "Shader.h"
+#include "error.h"		// PrintErrorAndAbort
 
 #include <iostream>		// std::cout
 #include <fstream>		// std::ifstream
@@ -6,31 +7,29 @@
 #include <assert.h>		// assert
 #include <filesystem>	// std::path
 
-void CheckCompileErrors(const GLU shaderName, const std::string shaderTypeName) {
+void CheckCompileErrors(const GLU idShader, const std::string& rNameStageShader, const std::string& rPrettyNameShader) {
 	GLI success;
-	GLC infoLog[1024];
-	if (shaderTypeName == "PROGRAM") {
-		glGetProgramiv(shaderName, GL_LINK_STATUS, &success);
-		if (!success) {
-			glGetProgramInfoLog(shaderName, 1024, nullptr, infoLog);
-			std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << shaderTypeName << "\n" << infoLog
-				<< "\n -- --------------------------------------------------- -- " << std::endl;
-		}
+	Bool program = rNameStageShader == "PROGRAM";
+	if (program)
+		glGetProgramiv(idShader, GL_LINK_STATUS, &success);
+	else
+		glGetShaderiv(idShader, GL_COMPILE_STATUS, &success);
+
+	if (!success) {
+		GLC infoLog[1024];
+		if (program)
+			glGetProgramInfoLog(idShader, 1024, nullptr, infoLog);
+		else
+			glGetShaderInfoLog(idShader, 1024, nullptr, infoLog);
+		std::cout << (program ? "LINK" : "COMPILE") << " ERROR for shader "
+			<< rPrettyNameShader << " for stage: " << rNameStageShader << "\n" << infoLog << "\n";
 	}
-	else {
-		glGetShaderiv(shaderName, GL_COMPILE_STATUS, &success);
-		if (!success) {
-			glGetShaderInfoLog(shaderName, 1024, nullptr, infoLog);
-			std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << shaderTypeName << "\n" << infoLog
-				<< "\n -- --------------------------------------------------- -- " << std::endl;
-		}
-	}
-	
 }
 
 std::string ReadFile(const std::string& rPathFile) {
 	const std::ifstream file(rPathFile, std::ios::in);
-	assert(file.is_open() && "CANNOT OPEN THE FILE!\n");
+	if (!file.is_open())
+		PrintErrorAndAbort("CANNOT OPEN: " + rPathFile);
 
 	// read whole file
 	std::stringstream stream;
@@ -53,8 +52,9 @@ std::string RemoveComments(std::string str) {
 	return str;
 }
 
-GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, std::string defines = "") {
-	std::string shaderCode = RemoveComments(ReadFile(rPathShader));
+GLI CreateCompileShader(const std::string& rFileName, const GLE shaderType, std::string defines, std::string shaderPrettyName) {
+	const std::string shaderPath = "src/shaders/" + rFileName;
+	std::string shaderCode = RemoveComments(ReadFile(shaderPath));
 
 	// handle "#define"
 	if (!defines.empty()) {
@@ -69,7 +69,7 @@ GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, st
 	}
 
 	// handle "#include"
-	const std::filesystem::path parentDirectiory = std::filesystem::path(rPathShader).parent_path();
+	const std::filesystem::path parentDirectiory = std::filesystem::path(shaderPath).parent_path();
 	Size posInclude = 0;
 	while ((posInclude = shaderCode.find("#include", posInclude)) != shaderCode.npos) {
 		// get name of included file
@@ -97,25 +97,30 @@ GLI CreateCompileShader(const std::string& rPathShader, const GLE shaderType, st
 	glShaderSource(shaderName, 1, &shaderCodeCstr, nullptr);
 	glCompileShader(shaderName);
 	if (shaderType == GL_VERTEX_SHADER)
-		CheckCompileErrors(shaderName, "VERTEX");
+		CheckCompileErrors(shaderName, "VERTEX", shaderPrettyName);
 	else if (shaderType == GL_FRAGMENT_SHADER)
-		CheckCompileErrors(shaderName, "FRAGMENT");
+		CheckCompileErrors(shaderName, "FRAGMENT", shaderPrettyName);
 	else if (shaderType == GL_GEOMETRY_SHADER)
-		CheckCompileErrors(shaderName, "GEOMETRY");
+		CheckCompileErrors(shaderName, "GEOMETRY", shaderPrettyName);
 	else if (shaderType == GL_COMPUTE_SHADER)
-		CheckCompileErrors(shaderName, "COMPUTE");
+		CheckCompileErrors(shaderName, "COMPUTE", shaderPrettyName);
 	else
-		assert(false && "WRONG SHADER TYPE!");
+		std::cout << "UNHANDLED SHADER TYPE!";
 	return shaderName;
 }
 
-Shader::Shader(const std::string& rPathVs, const std::string& rPathFs, const std::string& rPathGs, const std::string& defines) {
-	const bool hasGS = (rPathGs.empty()) ? false : true;
+Shader::Shader(std::string fileNameVs, std::string fileNameFs, std::string fileNameGs, const std::string& rDefines) {
+	const bool hasGS = (fileNameGs.empty()) ? false : true;
+	
+	m_prettyName = "(" + fileNameVs + ", " + fileNameFs;
+	if (hasGS)
+		m_prettyName += ", " + fileNameGs;
+	m_prettyName += ", defines: " + rDefines + ")";
 
-	const GLI  shaderNameVertex	  = CreateCompileShader(rPathVs, GL_VERTEX_SHADER, defines);
-	const GLI  shaderNameFragment = CreateCompileShader(rPathFs, GL_FRAGMENT_SHADER, defines);
+	const GLI  shaderNameVertex	  = CreateCompileShader(fileNameVs, GL_VERTEX_SHADER, rDefines, m_prettyName);
+	const GLI  shaderNameFragment = CreateCompileShader(fileNameFs, GL_FRAGMENT_SHADER, rDefines, m_prettyName);
 	GLI shaderNameGeometry;
-	if (hasGS) shaderNameGeometry = CreateCompileShader(rPathGs, GL_GEOMETRY_SHADER, defines);
+	if (hasGS) shaderNameGeometry = CreateCompileShader(fileNameGs, GL_GEOMETRY_SHADER, rDefines, m_prettyName);
 	
 	m_id = glCreateProgram();
 	glAttachShader(m_id, shaderNameVertex);
@@ -123,7 +128,7 @@ Shader::Shader(const std::string& rPathVs, const std::string& rPathFs, const std
 	if (hasGS)
 		glAttachShader(m_id, shaderNameGeometry);
 	glLinkProgram(m_id);
-	CheckCompileErrors(m_id, "PROGRAM");
+	CheckCompileErrors(m_id, "PROGRAM", m_prettyName);
 
 	glDeleteShader(shaderNameVertex);
 	glDeleteShader(shaderNameFragment);
@@ -131,17 +136,25 @@ Shader::Shader(const std::string& rPathVs, const std::string& rPathFs, const std
 		glDeleteShader(shaderNameGeometry);
 }
 
-Shader::Shader(const std::string& rPathCs) {
-	const GLI shaderNameCompute = CreateCompileShader(rPathCs, GL_COMPUTE_SHADER);
+Shader::Shader(std::string fileNameCs) {
+	m_prettyName = "(" + fileNameCs + ")";
+	const GLI shaderNameCompute = CreateCompileShader(fileNameCs, GL_COMPUTE_SHADER, "", m_prettyName);
 
 	m_id = glCreateProgram();
 	glAttachShader(m_id, shaderNameCompute);
 	glLinkProgram(m_id);
-	CheckCompileErrors(m_id, "PROGRAM");
+	CheckCompileErrors(m_id, "PROGRAM", m_prettyName);
 	glDeleteShader(shaderNameCompute);
 }
 
 void Shader::IsUniformDefined(const std::string& name) const {
-	if (glGetUniformLocation(m_id, name.c_str()) == -1)
-		std::cout << "WARNING! uniform \t'" << name << " not found\n";
+	if (glGetUniformLocation(m_id, name.c_str()) == -1) {
+		auto it = m_mapUniformNotFound.find(name);
+		// print only once
+		if (it == m_mapUniformNotFound.end()) {
+			std::cout << "WARNING! uniform \t'" << name << " not found\n";
+			m_mapUniformNotFound.insert(name);
+		}
+	}
+		
 }

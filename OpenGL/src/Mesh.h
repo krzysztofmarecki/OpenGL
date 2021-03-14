@@ -2,10 +2,8 @@
 #include <glad/glad.h>	// OGL stuff
 
 #include "types.h"
-#include "Shader.h"		// Shader
 
 #include <vector>		// std::vector
-#include <string>		// std::string
 
 struct Vertex {
 	Vec3 m_position;

@@ -2,16 +2,17 @@
 #include "types.h"
 
 #include <string>	// std::string
+#include <unordered_set>
 
 class Shader
 {
 public:
 	// graphic
-	Shader(const std::string& rPathVs, const std::string& rPathFs, const std::string& rPathGs = "", const std::string& defines = "");
+	Shader(std::string fileNameVs, std::string fileNameFs, std::string fileNameGs = "", const std::string& rDefines = "");
 	// compute
-	Shader(const std::string& rPathCs);
+	Shader(std::string fileNameCs);
 	
-	void Use() {
+	void Use() const {
 		glUseProgram(m_id);
 	}
 
@@ -92,4 +93,6 @@ private:
 	void IsUniformDefined(const std::string& name) const;
 
 	GLU m_id;
+	std::string m_prettyName;
+	mutable std::unordered_set<std::string> m_mapUniformNotFound;
 };

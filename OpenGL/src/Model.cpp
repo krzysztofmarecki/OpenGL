@@ -40,8 +40,7 @@ Model::Model(std::string pathModel) {
 	const aiScene* pScene = importer.ReadFile(pathModel, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
 
 	if (!pScene || pScene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !pScene->mRootNode) {
-		std::cout << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
-		assert(false || "load model failed");
+		std::cout << "Failed to load model: " << pathModel << "\nERROR::ASSIMP::" << importer.GetErrorString() << "\n";
 		return;
 	}
 	
@@ -162,21 +161,24 @@ GLU TextureFromFile(const Path& directory, const char* pathRelativeFile) {
 	path.concat(pathRelativeFile);
 	char buffer[1024];
 	stbi_convert_wchar_to_utf8(&buffer[0], 1024, path.c_str());
-	int width, height, nrComponents;
-	stbi_uc* data = stbi_load(&buffer[0], &width, &height, &nrComponents, 0);
+	int width;
+	int height;
+	int numberOfChannels;
+	stbi_uc* data = stbi_load(&buffer[0], &width, &height, &numberOfChannels, 0);
 	if (data != nullptr) {
-		GLenum format, internalFormat;
-		if (nrComponents == 1) {
+		GLE format;
+		GLE	internalFormat;
+		if (numberOfChannels == 1) {
 			format = GL_RED;
 			internalFormat = GL_R8;
-		} else if (nrComponents == 3) {
+		} else if (numberOfChannels == 3) {
 			format = GL_RGB;
 			internalFormat = GL_RGB8;
-		} else if (nrComponents == 4) {
-			format = GL_RGBA;
+		} else if (numberOfChannels == 4) {
+			format = GL_RGBA; 
 			internalFormat = GL_RGBA8;
 		} else {
-			assert(false);
+			std::cout << "WARNING! Wrong number of channels for: " << path << "\n";
 		}
 
 		GLU textureID;

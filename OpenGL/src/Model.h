@@ -3,10 +3,10 @@
 #include <assimp/scene.h>	// aiNode, aiMesh, aiMaterial, aiTextureType
 
 #include "types.h"
-#include "Shader.h"			// Shader
 #include "Mesh.h"			// Mesh
 
 #include <vector>			// std::vector
+
 class Model
 {
 public:

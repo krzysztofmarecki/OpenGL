@@ -10,6 +10,7 @@
 #include "Shader.h"						// Shader
 #include "Camera.h"						// Camera
 #include "Model.h"						// Model
+#include "error.h"						// PrintErrorAndAbort
 
 #include <array>						// std::array
 #include <random>						// std::random_device, std::mt19937, std::uniform_real_distribution
@@ -60,7 +61,7 @@ F32		g_rateOfChangeAo = 0.11;
 Bool	g_enableAO = true;
 Bool	g_showAO = false;
 
-I32 main() {
+int main() {
 	// glfw: initialize and configure
 	// ------------------------------
 	glfwInit();
@@ -75,7 +76,7 @@ I32 main() {
 		glfwWindowHint(GLFW_DOUBLEBUFFER, GL_FALSE);
 	GLFWwindow* window = glfwCreateWindow(g_kWScreen, g_kHScreen, "LearnOpenGL", nullptr, nullptr);
 	if (window == nullptr)
-		assert(false && "Failed to create GLFW window");
+		PrintErrorAndAbort("Failed to create GLFW window");
 
 	glfwMakeContextCurrent(window);
 	if (g_kVSync)
@@ -88,7 +89,7 @@ I32 main() {
 	// glad: load all OpenGL function pointers
 	// ---------------------------------------
 	if (gladLoadGLLoader((GLADloadproc)glfwGetProcAddress) == 0)
-		assert(false && "Failed to initialize GLAD");
+		PrintErrorAndAbort("Failed to initialize GLAD");
 
 	// configure global opengl state
 	// -----------------------------
@@ -156,7 +157,7 @@ I32 main() {
 
 	auto AssertFBOIsComplete = [](GLU fbo) {
 		if (glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			assert(false && "Framebuffer not complete!\n");
+			PrintErrorAndAbort("Framebuffer not complete!");
 	};
 
 	AssertFBOIsComplete(fboGeometry);
@@ -294,25 +295,25 @@ I32 main() {
 	// Shaders
 	// -------
 	const std::string macroDefineAlphaMasked = "#define ALPHA_MASKED";
-	Shader passDirectShadow("src/shaders/shadow.vert", "src/shaders/shadow.frag");
-	Shader passDirectShadowAlphaMasked("src/shaders/shadow.vert", "src/shaders/shadow.frag", "", macroDefineAlphaMasked);
-	Shader passGeometry("src/shaders/geometry.vert", "src/shaders/geometry.frag");
-	Shader passGeometryAlphaMasked("src/shaders/geometry.vert", "src/shaders/geometry.frag", "", macroDefineAlphaMasked);
-	Shader passShading("src/shaders/uv.vert", "src/shaders/shading.frag");
-	Shader passExposureTone("src/shaders/uv.vert", "src/shaders/exposureToneMap.frag");
-	Shader passPassThrough("src/shaders/uv.vert", "src/shaders/passThrough.frag");
+	const Shader passDirectShadow("shadow.vert", "shadow.frag");
+	const Shader passDirectShadowAlphaMasked("shadow.vert", "shadow.frag", "", macroDefineAlphaMasked);
+	const Shader passGeometry("geometry.vert", "geometry.frag");
+	const Shader passGeometryAlphaMasked("geometry.vert", "geometry.frag", "", macroDefineAlphaMasked);
+	const Shader passShading("uv.vert", "shading.frag");
+	const Shader passExposureTone("uv.vert", "exposureToneMap.frag");
+	const Shader passPassThrough("uv.vert", "passThrough.frag");
 
-	Shader passDepthVelocityDownsample("src/shaders/uv.vert", "src/shaders/depthVelocityDownsample.frag");
-	Shader passSsao("src/shaders/uv.vert", "src/shaders/gtao.frag");
-	Shader passSsaoSpatialDenoiser("src/shaders/uv.vert", "src/shaders/gtaoSpatialDenoiser.frag");
-	Shader passSsaoTemporalDenoiser("src/shaders/uv.vert", "src/shaders/gtaoTemporalDenoiser.frag");
+	const Shader passDepthVelocityDownsample("uv.vert", "depthVelocityDownsample.frag");
+	const Shader passSsao("uv.vert", "gtao.frag");
+	const Shader passSsaoSpatialDenoiser("uv.vert", "gtaoSpatialDenoiser.frag");
+	const Shader passSsaoTemporalDenoiser("uv.vert", "gtaoTemporalDenoiser.frag");
 
 	const std::string macroDefineSmaa = std::string("#define g_kWScreen ") + std::to_string(g_kWScreen) + "\n"
 		"#define g_kHScreen " + std::to_string(g_kHScreen) + "\n#define SMAA_REPROJECTION 1";
-	Shader passSmaaEdge("src/shaders/smaaEdgeDetection.vert", "src/shaders/smaaEdgeDetection.frag", "", macroDefineSmaa);
-	Shader passSmaaBlending("src/shaders/smaaBlendingWeightCalculation.vert", "src/shaders/smaaBlendingWeightCalculation.frag", "", macroDefineSmaa);
-	Shader passSmaaNeighborhood("src/shaders/smaaNeighborhoodBlending.vert", "src/shaders/smaaNeighborhoodBlending.frag", "", macroDefineSmaa);
-	Shader passSmaaTemporal("src/shaders/uv.vert", "src/shaders/smaaTemporalResolve.frag", "", macroDefineSmaa);
+	const Shader passSmaaEdge("smaaEdgeDetection.vert", "smaaEdgeDetection.frag", "", macroDefineSmaa);
+	const Shader passSmaaBlending("smaaBlendingWeightCalculation.vert", "smaaBlendingWeightCalculation.frag", "", macroDefineSmaa);
+	const Shader passSmaaNeighborhood("smaaNeighborhoodBlending.vert", "smaaNeighborhoodBlending.frag", "", macroDefineSmaa);
+	const Shader passSmaaTemporal("uv.vert", "smaaTemporalResolve.frag", "", macroDefineSmaa);
 
 	GLU samplerAnisoRepeat;
 	glCreateSamplers(1, &samplerAnisoRepeat);
@@ -430,7 +431,7 @@ I32 main() {
 		const float nearPlane = 0.1;
 		const Mat4 projection = JitterProjection(CalculateInfReversedZProj(g_camera, (F32)g_kWScreen / (F32)g_kHScreen, nearPlane), frameCount);
 		const Mat4 view = g_camera.GetViewMatrix();
-		auto SetUniformsBasics = [&](Shader& shader) {
+		auto SetUniformsBasics = [&](const Shader& shader) {
 			shader.SetMat4("ModelViewProj", projection * view * modelSponza);
 			shader.SetMat4("ModelViewProjPrev", modelViewProjPrevSponza);
 			shader.SetMat3("NormalMatrix", glm::transpose(glm::inverse(Mat3(modelSponza))));
@@ -894,10 +895,10 @@ void CallbackKeyboard(GLFWwindow* window, I32 key, I32 scancode, I32 action, I32
 void CallbackMessage(GLE source, GLE type, GLU id, GLE severity, GLS length,
 	const GLC* message, const void* userParam)
 {
-	if (type == 0x8251) // silence message about static draw
+	if (type == 0x8251) // message about static draw
 		return;
-	if (type == 0x824e) // warning about undefined behaviour that shadow map is simultaneously used with and without PCF, it works on NVidia and AMD anyway
-		return;
+	if (type == 0x824c) // "(program) object is not successfully linked, or it not a program object"
+		return;			// I print shader errors myself
 	fprintf(stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
 		(type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""),
 		type, severity, message);
