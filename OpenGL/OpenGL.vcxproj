@@ -37,6 +37,7 @@
   <ItemGroup>
     <None Include="src\shaders\depth.gl" />
     <None Include="src\shaders\depthVelocityDownsample.frag" />
+    <None Include="src\shaders\eyeAdaptation.comp" />
     <None Include="src\shaders\gamma.gl" />
     <None Include="src\shaders\kernels.gl" />
     <None Include="src\shaders\lightning.gl" />

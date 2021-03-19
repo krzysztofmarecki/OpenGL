@@ -4,11 +4,11 @@ out vec4 outColor;
 in vec2 UV;
 
 layout(binding = 0) uniform sampler2D ColorHDR;
-layout(binding = 1) uniform sampler2D DiffuseLight;
-layout(binding = 2) uniform sampler2DArray ShadowMapArray;
+layout(binding = 1) uniform sampler2D LogLuminance;
+layout(binding = 2) uniform sampler2D LogLuminanceAvg;
+layout(binding = 3) uniform sampler2DArray ShadowMapArray;
 
 uniform float Exposure;
-uniform float LevelLastMipMap;
 
 uniform bool ShowShadowMap;
 uniform uint IdxCascade;
@@ -58,8 +58,8 @@ void main() {
 	} else {
 		vec3 colorHDR = texture(ColorHDR, UV).rgb;
 		// exposure:
-		const float luminance = exp(texture(DiffuseLight, UV).r);
-		const float avgLuminance = exp(textureLod(DiffuseLight, UV, LevelLastMipMap).r);
+		const float luminance = exp(texture(LogLuminance, UV).r);
+		const float avgLuminance = exp(texture(LogLuminanceAvg, vec2(0.5)).r); 
 		colorHDR *= Exposure;
 		colorHDR *= (luminance / avgLuminance);
 

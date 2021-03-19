@@ -47,15 +47,7 @@ void main() {
 	color += tempSun.color;
 	colorPureDiffuse += tempSun.colorPureDiffuse;
 
-	// point lights
-    for(int i = 0; i < g_kNumPointLights; ++i) {
-        Foo tempPoint = PointLight(wsNormal, wsPos, AWsPointLightPosition[i], APointLightColor[i], colorDiffuse, colorSpecular);
-		color += tempPoint.color;
-		colorPureDiffuse += tempPoint.colorPureDiffuse;
-    }
-
 	// ambient + ambient occlusion
-
 	vec3 ao = vec3(1);
 	if (EnableAO)
 		ao = MultiBounce(texture(GTAO, UV).r, colorDiffuse);

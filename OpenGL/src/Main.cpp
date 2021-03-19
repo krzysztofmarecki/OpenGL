@@ -116,6 +116,9 @@ int main() {
 	GLU bufDiffuseLight;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufDiffuseLight);
 	glTextureStorage2D(bufDiffuseLight, log2f(std::max(g_kWScreen, g_kHScreen))+1, GL_R16F, g_kWScreen, g_kHScreen);
+	GLU bufDiffuseLightSingleValue;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufDiffuseLightSingleValue);
+	glTextureStorage2D(bufDiffuseLightSingleValue, 1, GL_R16F, 1, 1);
 	GLU bufDiffuseSpec;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufDiffuseSpec);
 	glTextureStorage2D(bufDiffuseSpec, 1, GL_RGBA8, g_kWScreen, g_kHScreen);
@@ -263,6 +266,7 @@ int main() {
 	const Shader passGeometryAlphaMasked("geometry.vert", "geometry.frag", "", macroDefineAlphaMasked);
 	const Shader passShading("uv.vert", "shading.frag");
 	const Shader passExposureTone("uv.vert", "exposureToneMap.frag");
+	const Shader passEyeAdaptation("eyeAdaptation.comp");
 	const Shader passPassThrough("uv.vert", "passThrough.frag");
 
 	const Shader passDepthVelocityDownsample("uv.vert", "depthVelocityDownsample.frag");
@@ -490,24 +494,11 @@ int main() {
 			}
 			glViewport(0, 0, g_kWScreen, g_kHScreen);
 			std::swap(bufDepthHalfResCurr, bufDepthHalfResPrev);
+			std::swap(bufSsaoAccCurr, bufSsaoAccPrev);
 		}
-		// deffered pass + generate mipmaps for bufDiffuseLight
-		// ----------------------------------------------------
+		// deffered pass
+		// -------------
 		{
-			const U32 kNumPointLights = 4;
-			const std::array<Vec3, kNumPointLights> aWsPointLightPosition = {
-				Vec3(0, 10, 0),
-				Vec3(-50, 10, -50),
-				Vec3(50, 10, 50),
-				Vec3(50, 10, -50)
-			};
-			const std::array<Vec3, kNumPointLights> aLightColor = {
-				Vec3(50),
-				Vec3(50),
-				Vec3(50),
-				Vec3(50)
-			};
-
 			glBindFramebuffer(GL_FRAMEBUFFER, fboDeffered);
 			passShading.Use();
 			passShading.SetVec3("WsPosCamera", g_camera.GetWsPosition());
@@ -523,8 +514,6 @@ int main() {
 			passShading.SetFloat("Bias", g_bias);
 			passShading.SetFloat("ScaleNormalOffsetBias", g_scaleNormalOffsetBias);
 			passShading.SetFloat("SizeFilter", g_sizeFilterShadow);
-			passShading.SetVec3Arr("AWsPointLightPosition", aWsPointLightPosition.data(), aWsPointLightPosition.size());
-			passShading.SetVec3Arr("APointLightColor", aLightColor.data(), aLightColor.size());
 			passShading.SetMat4("InvViewProj", glm::inverse(projection* view));
 			passShading.SetFloat("Near", nearPlane);
 			passShading.SetBool("EnableAO", g_enableAO);
@@ -534,7 +523,7 @@ int main() {
 			glBindTextureUnit(3, bufDepthShadow);
 			glBindTextureUnit(4, bufDepthShadow);
 			glBindTextureUnit(5, bufRandomAngles); // lack of sampler is intentional
-			glBindTextureUnit(6, bufSsaoAccCurr);
+			glBindTextureUnit(6, bufSsaoAccPrev); // swap above
 			glBindSampler(0, samplerPointClamp);
 			glBindSampler(1, samplerPointClamp);
 			glBindSampler(2, samplerPointClamp);
@@ -545,18 +534,26 @@ int main() {
 			glDisable(GL_DEPTH_TEST); // also disables depth writes
 			RenderQuad();
 			glEnable(GL_DEPTH_TEST);
-			
-			glGenerateTextureMipmap(bufDiffuseLight);
 		}
-		std::swap(bufSsaoAccCurr, bufSsaoAccPrev);
+		// eye adaptation
+		// --------------
+		{
+			glGenerateTextureMipmap(bufDiffuseLight);
+			passEyeAdaptation.Use();
+			passEyeAdaptation.SetFloat("DeltaTime", deltaTime);
+			glBindImageTexture(0, bufDiffuseLight, log2f(g_kWScreen), false, 0, GL_READ_ONLY, GL_R16F);
+			glBindImageTexture(1, bufDiffuseLightSingleValue, 0, false, 0, GL_READ_WRITE, GL_R16F);
+			glDispatchCompute(1, 1, 1);
+		}
 		// apply exposure, tone mapping and gamma correction
 		// -------------------------------------------------
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, fboBack);
 
+			glBindSampler(3, 0); // to avoid warning about PCF sampler binded (above) do depth texture and using non shadow sampler in shader (0x824e)
 			if (g_showShadowMap) {
-				glBindTextureUnit(2, bufDepthShadow);
-				glBindSampler(2, samplerShadowDepth);
+				glBindTextureUnit(3, bufDepthShadow);
+				glBindSampler(3, samplerShadowDepth);
 				passExposureTone.SetUInt("IdxCascade", g_cascadeIdx);
 			} else if (g_showAO) {
 				glBindTextureUnit(0, bufSsaoAccPrev); // swap above
@@ -564,13 +561,14 @@ int main() {
 			} else {
 				glBindTextureUnit(0, bufHdr);
 				glBindTextureUnit(1, bufDiffuseLight);
+				glBindTextureUnit(2, bufDiffuseLightSingleValue);
 				glBindSampler(0, samplerPointClamp);
-				glBindSampler(1, samplerTrilinearClamp);
+				glBindSampler(1, samplerPointClamp);
+				glBindSampler(2, samplerPointClamp);
 			}
-			passExposureTone.SetFloat("Exposure", g_exposure);
-			passExposureTone.SetFloat("LevelLastMipMap", log2f(g_kWScreen));
 			passExposureTone.SetBool("ShowShadowMap", g_showShadowMap);
 			passExposureTone.SetBool("ShowAO", g_showAO);
+			passExposureTone.SetFloat("Exposure", g_exposure);
 			const F32 kWhitePoint = 10;
 			passExposureTone.SetVec4("ParamsLottes", CalculateToneMappingParamsLottes(kWhitePoint));
 			passExposureTone.SetFloat("WhitePoint", kWhitePoint);
@@ -582,7 +580,6 @@ int main() {
 			RenderQuad();
 			glDisable(GL_FRAMEBUFFER_SRGB);
 		}
-		
 		// TAA
 		// ---
 		if (g_tAA) {

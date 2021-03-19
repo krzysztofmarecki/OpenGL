@@ -115,5 +115,6 @@
     <None Include="src\shaders\taa.frag">
       <Filter>Source Files\Shaders</Filter>
     </None>
+    <None Include="src\shaders\eyeAdaptation.comp" />
   </ItemGroup>
 </Project>

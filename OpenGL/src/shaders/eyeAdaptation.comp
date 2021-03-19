@@ -1,0 +1,20 @@
+#version 420
+
+layout (local_size_x = 1) in;
+
+layout (binding = 0, r16f) uniform readonly image2D LogLuminance;
+layout (binding = 1, r16f) uniform image2D LogLuminanceAcc;
+
+uniform float DeltaTime;
+
+float GetRateOfChange(float deltaTime, float convergenceTime) {
+	return 1 - exp(-deltaTime / convergenceTime);
+}
+
+void main() {
+	const float luminanceCurr = exp(imageLoad(LogLuminance, ivec2(0,0)).r);
+	const float lumianceAcc = exp(imageLoad(LogLuminanceAcc, ivec2(0,0)).r);
+
+	float rateOfChange = GetRateOfChange(DeltaTime, 2);
+	imageStore(LogLuminanceAcc, ivec2(0,0), vec4(log(mix(lumianceAcc, luminanceCurr, rateOfChange))));
+}

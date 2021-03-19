@@ -2,7 +2,7 @@
 
 Various graphic effects implemented in OpenGL.
 
-![](https://i.ibb.co/LQ4m8Fk/Bez-tytu-u.png)
+![](https://i.ibb.co/5n2MpyX/Bez-tytu-u.png)
 
 #### Shadow mapping
 - PCF (2 modes)
@@ -55,17 +55,16 @@ https://blog.selfshadow.com/publications/s2016-shading-course/activision/s2016_p
 - Cross talk uses max(rgb)
     - blends to pure white at white point
 
+#### Eye adaptation
+- log-average
+- based on pure (without affecting surface) diffuse light
+
 #### Normal mapping
 - world space
 
 #### Reverse-Z
 - depth buffer and shadow maps
 - comparison function: GEQUAL
-
-#### Eye adaptation
-- log-average
-- based on pure (without affecting surface) diffuse light generated on main pass (MRT)
-- no lag
 
 #### Other
 - deferred shading
