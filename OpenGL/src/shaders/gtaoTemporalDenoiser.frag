@@ -29,7 +29,8 @@ void main() {
 	const vec4 depthPrev4 = textureGather(DepthPrev, UV-velocity);
 	const vec4 aoAcc4	  = textureGather(SsaoAcc, UV-velocity);
 
-	const vec2 pixelUVPrev = (UV - velocity) * Scaling.xy - vec2(0.4999);
+	// small distortions are still visible on mouse movement (tested on Kepler)
+	const vec2 pixelUVPrev = (UV - velocity) * Scaling.xy - vec2(0.5) + vec2(1./512);
 	const float weightX = 1 - fract(pixelUVPrev.x);
 	const float weightY = fract(pixelUVPrev.y);
 
