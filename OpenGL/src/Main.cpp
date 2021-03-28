@@ -51,7 +51,7 @@ F32		g_sizeFilterShadow = 15;
 F32		g_widthLight = 800;
 
 F32		g_wsSizeKernelAO = 3.5;
-F32		g_rateOfChangeAO = 0.11;
+F32		g_rateOfChangeAO = 0.2;
 Bool	g_enableAO = true;
 Bool	g_showAO = false;
 
