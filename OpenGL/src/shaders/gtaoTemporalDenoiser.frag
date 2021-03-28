@@ -14,9 +14,6 @@ uniform float Near;
 uniform float RateOfChange;
 uniform vec2 Scaling;
 
-// Due to calculating GTAO only in one direction per frame, neighbourhood clamping creates flickering.
-// TODO: revisit with TAA on top
-
 void main() {
 	const float ao		= texture(Ssao, UV).x;
 	const vec2 velocity	= texture(Velocity, UV.xy).xy;
@@ -48,7 +45,6 @@ void main() {
 		const float vsDepthPrev = VsDepthFromCsDepth(depthPrev4[i], Near);
 		// too agresive bilateral results in floating AO under WSAD camera motion
 		// currently don't eliminate halo in 100%
-		// TODO: revisit with TAA on top
 		const float bilateralWeight = clamp(1.0 + 0.1 * (vsDepthCurr - vsDepthPrev), 0.01, 1.0);
 		weight		  += bilinearWeights[i] * bilateralWeight;
 		aoAccWeighted += bilinearWeights[i] * bilateralWeight * aoAcc4[i];
