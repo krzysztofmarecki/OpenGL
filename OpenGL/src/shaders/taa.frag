@@ -103,8 +103,9 @@ vec3 ClosestUVZ(vec2 uv, vec2 scaling, sampler2D Depth) {
 	return vec3(uv + scaling * closest.xy, closest.z);
 }
 
-// from Filmic SMAA
-vec3 CatmulRom5Tap(vec2 uv, vec4 scaling, sampler2D Color)
+// Flimic SMAA version distorts image (with any sharpness settings and even with additional 4 taps), hence vanilla version
+// https://vec3.ca/bicubic-filtering-in-fewer-taps/
+vec3 CatmullRom5Tap(vec2 uv, vec4 scaling, sampler2D Color)
 {
     const vec2 samplePos = uv * scaling.xy;
     const vec2 tc1 = floor(samplePos - 0.5) + 0.5;
@@ -112,33 +113,32 @@ vec3 CatmulRom5Tap(vec2 uv, vec4 scaling, sampler2D Color)
     const vec2 f2 = f * f;
     const vec2 f3 = f * f2;
 
-    const float c = 0.25; // sharpening, too high values produse artifacts
-
-    const vec2 w0 = -c         * f3 +  2.0 * c         * f2 - c * f;
-    const vec2 w1 =  (2.0 - c) * f3 - (3.0 - c)        * f2          + 1.0;
-    const vec2 w2 = -(2.0 - c) * f3 + (3.0 - 2.0 * c)  * f2 + c * f;
-    const vec2 w3 = c          * f3 - c                * f2;
+    const vec2 w0 = f2 - 0.5 * (f3 + f);
+    const vec2 w1 = 1.5 * f3 - 2.5 * f2 + 1;
+    const vec2 w3 = 0.5 * (f3 - f2);
+    const vec2 w2 = 1 - w0 - w1 - w3;
 
     const vec2 w12 = w1 + w2;
-    const vec2 tc0 = scaling.zw   * (tc1 - 1.0);
-    const vec2 tc3 = scaling.zw   * (tc1 + 2.0);
-    const vec2 tc12 = scaling.zw  * (tc1 + w2 / w12);
+    
+    const vec2 tc0  = (tc1 - 1)			* scaling.zw;
+    const vec2 tc12 = (tc1 + w2 / w12)	* scaling.zw;
+    const vec2 tc3  = (tc1 + 2)			* scaling.zw;
 
-	vec3 result = vec3(0);
-    result += texture(Color, vec2(tc12.x, tc0.y)).rgb * w12.x * w0.y;
-    result += texture(Color, vec2(tc0.x, tc12.y)).rgb * w0.x * w12.y;
-    result += texture(Color, vec2(tc12.x, tc12.y)).rgb * w12.x * w12.y;
-    result += texture(Color, vec2(tc3.x, tc0.y)).rgb * w3.x * w12.y;
-    result += texture(Color, vec2(tc12.x, tc3.y)).rgb * w12.x *  w3.y;
+    vec4 result = vec4(0);
+    result += vec4(texture(Color, vec2(tc0.x,  tc12.y)).rgb, 1) * (w0.x  * w12.y);
+    result += vec4(texture(Color, vec2(tc12.x, tc0.y )).rgb, 1) * (w12.x * w0.y );
+    result += vec4(texture(Color, vec2(tc12.x, tc12.y)).rgb, 1) * (w12.x * w12.y);
+    result += vec4(texture(Color, vec2(tc12.x, tc3.y )).rgb, 1) * (w12.x * w3.y );
+    result += vec4(texture(Color, vec2(tc3.x,  tc12.y)).rgb, 1) * (w3.x  * w12.y);
 
-	return result;
+    return result.rgb / result.a;
 }
 
 void main() {
 	const vec3 colorCurr = YCoCgFromRGB(texture(ColorCurr, UV).rgb);
 	const vec3 closestUVZ = ClosestUVZ(UV, Scaling.zw, DepthCurr);
 	const vec2 velocity = texture(Velocity, closestUVZ.xy).xy;
-	vec3 colorAcc = YCoCgFromRGB(CatmulRom5Tap(UV - velocity, Scaling, ColorAcc));
+	vec3 colorAcc = YCoCgFromRGB(CatmullRom5Tap(UV - velocity, Scaling, ColorAcc));
 
 	MinMaxAvg minMaxAvg = NeighbourhoodClamp(UV, Scaling.zw, colorCurr, ColorCurr);
 
