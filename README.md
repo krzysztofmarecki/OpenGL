@@ -49,7 +49,7 @@ https://blog.selfshadow.com/publications/s2016-shading-course/activision/s2016_p
         - produses less flickering for some reason
 - closest velocity
 - distance to clamp
-- history sampled with 5-tap Catmul-Rom
+- history sampled with 5-tap Catmull-Rom
 
 #### Filmic tone mapping
 - Lottes's curve with Bart Wronski's fixes
