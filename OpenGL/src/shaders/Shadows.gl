@@ -21,197 +21,75 @@ uniform float ScaleNormalOffsetBias;
 uniform float SizeFilter;
 // PCSS
 uniform float WidthLight;
+uniform float RadRotationTemporal;
+
+float PenumbraRadius(float depthReceiver, float depthBlocker, float widthLight) {
+    return abs(widthLight * (depthReceiver - depthBlocker) / depthBlocker);
+}
+
+float SampleShadowMapRandomDiscPCFPCSS(vec3 uvz, uint idxCascade, vec3 wsPos, float widthLight,
+	sampler2DArrayShadow ShadowMapArrayPCF, sampler2DArray ShadowMapArrayDepth, sampler2D Noise) {
+	
+	const vec2 sizeFilter = SizeFilter.xx * abs(AScaleCascade[idxCascade].xy);
+	const vec2 sizeShadowMap = textureSize(ShadowMapArrayPCF, 0).xy;
+    const float depth = clamp(uvz.z + Bias, 0, 1); // clamp to avoid buggy results at infinity
+	
+	const vec2 uvNoise = gl_FragCoord.xy / vec2(textureSize(Noise, 0).xy);
+	const float radAngle = texture(Noise, uvNoise).x * 2 * 3.1415 + RadRotationTemporal;
+	const mat2x2 randomRotationMatrix = mat2x2(vec2(cos(radAngle), -sin(radAngle)),
+												vec2(sin(radAngle),  cos(radAngle)));
+	const vec2 scaleSample = max(vec2(0), 0.5 * abs(sizeFilter) / sizeShadowMap);
+
+	const uint kSizeDisc = 10;
+
+	// blocker search
+	float depthOccluderAverage = 0;
+	int numOcluderSamples = 0;
+	for (uint i = 0; i < kSizeDisc; ++i) {
+		const vec2 offsetSample = (randomRotationMatrix * DiscSorted[i]) * scaleSample;
+		const vec2 posSample = uvz.xy + offsetSample;
+		const float depthSample = texture(ShadowMapArrayDepth, vec3(posSample, idxCascade)).r;
+		if (depthSample > depth) {
+			depthOccluderAverage += depthSample;
+			++numOcluderSamples;
+		}
+	}
+
+	// early stop
+	if (numOcluderSamples == 0)
+		return 1;
+	else if (numOcluderSamples == kSizeDisc)
+		return 0;
+
+	// determine kernel scale for PCF
+	depthOccluderAverage /= numOcluderSamples;
+	const float penumbraRadius = PenumbraRadius(depth, depthOccluderAverage, widthLight);
+	const float scale = clamp(penumbraRadius / kSizeDisc, 0.1, 1.0);
+
+	// PCF
+	float sum = 0.0f;
+	for(int i = 0; i < kSizeDisc; ++i) {
+		const vec2 offsetSample = (randomRotationMatrix * DiscSorted[i]) * scaleSample * scale;
+		const vec2 posSample = uvz.xy + offsetSample;
+		sum += texture(ShadowMapArrayPCF, vec4(posSample, idxCascade, depth));
+    }
+	return sum / kSizeDisc;
+}
 
 // functions with comments like below was rewritten to GLSL from https://github.com/TheRealMJP/Shadows/blob/master/Shadows/Mesh.hlsl
 
 //-------------------------------------------------------------------------------------------------
-// Samples the shadow map with a fixed-size PCF kernel optimized with GatherCmp. Uses code
-// from "Fast Conventional Shadow Filtering" by Holger Gruen, in GPU Pro.
-//-------------------------------------------------------------------------------------------------
-float SampleShadowMapFixedSizePCF(vec3 uvz, uint idxCascade, sampler2DArrayShadow ShadowMapArrayPCF, float Bias) {
-	const vec2 sizeShadowMap = textureSize(ShadowMapArrayPCF, 0).xy;
-    const float depth = uvz.z + Bias;
-    vec2 tc = uvz.xy;
-
-    vec4 s = vec4(0.0f);
-    const vec2 stc = (sizeShadowMap * tc.xy) + vec2(0.5f, 0.5f);
-    const vec2 tcs = floor(stc);
-    vec2 fc;
-    float w = 0.0f;
-
-    fc.xy = stc - tcs;
-	tc.xy = tcs / sizeShadowMap;
-		
-	for(int row = 0; row < g_kSizeKernel; ++row) {
-		for(int col = 0; col < g_kSizeKernel; ++col)
-			w += W[row][col];
-	}
-
-	const int KS_2 = g_kSizeKernel / 2;
-    vec4 v1[KS_2 + 1];
-    vec2 v0[KS_2 + 1];
-
-    // -- loop over the rows
-    for(int row = -KS_2; row <= KS_2; row += 2) {
-		for(int col = -KS_2; col <= KS_2; col += 2) {
-			float value = W[row + KS_2][col + KS_2];
-            if(col > -KS_2)
-				value += W[row + KS_2][col + KS_2 - 1];
-			if(col < KS_2)
-                value += W[row + KS_2][col + KS_2 + 1];
-			if(row > -KS_2) {
-				value += W[row + KS_2 - 1][col + KS_2];
-				if(col < KS_2)
-					value += W[row + KS_2 - 1][col + KS_2 + 1];
-				if(col > -KS_2)
-					value += W[row + KS_2 - 1][col + KS_2 - 1];
-            } // if(row > -KS_2)
-			if(value != 0.0f)
-				v1[(col + KS_2) / 2] = textureGatherOffset(ShadowMapArrayPCF, vec3(tc.xy, idxCascade), depth, ivec2(col, row));
-            else
-				v1[(col + KS_2) / 2] = vec4(0.0f);
-			
-			if(col == -KS_2) {
-				s.x += (1.0f - fc.y) * (v1[0].w * (W[row + KS_2][col + KS_2]
-					- W[row + KS_2][col + KS_2] * fc.x)
-                    + v1[0].z * (fc.x * (W[row + KS_2][col + KS_2]
-					- W[row + KS_2][col + KS_2 + 1])
-					+ W[row + KS_2][col + KS_2 + 1]));
-				s.y += fc.y * (v1[0].x * (W[row + KS_2][col + KS_2]
-				- W[row + KS_2][col + KS_2] * fc.x)
-				+ v1[0].y * (fc.x * (W[row + KS_2][col + KS_2]
-				- W[row + KS_2][col + KS_2 + 1])
-				+ W[row + KS_2][col + KS_2 + 1]));
-				if(row > -KS_2) {
-					s.z += (1.0f - fc.y) * (v0[0].x * (W[row + KS_2 - 1][col + KS_2]
-						- W[row + KS_2 - 1][col + KS_2] * fc.x)
-						+ v0[0].y * (fc.x * (W[row + KS_2 - 1][col + KS_2]
-						- W[row + KS_2 - 1][col + KS_2 + 1])
-						+ W[row + KS_2 - 1][col + KS_2 + 1]));
-					s.w += fc.y * (v1[0].w * (W[row + KS_2 - 1][col + KS_2]
-						- W[row + KS_2 - 1][col + KS_2] * fc.x)
-						+ v1[0].z * (fc.x * (W[row + KS_2 - 1][col + KS_2]
-						- W[row + KS_2 - 1][col + KS_2 + 1])
-						+ W[row + KS_2 - 1][col + KS_2 + 1]));
-				} // if(row > -KS_2)
-			} // if(col == -KS_2)
-			else if(col == KS_2) {
-				s.x += (1 - fc.y) * (v1[KS_2].w * (fc.x * (W[row + KS_2][col + KS_2 - 1]
-					- W[row + KS_2][col + KS_2]) + W[row + KS_2][col + KS_2])
-					+ v1[KS_2].z * fc.x * W[row + KS_2][col + KS_2]);
-				s.y += fc.y * (v1[KS_2].x * (fc.x * (W[row + KS_2][col + KS_2 - 1]
-					- W[row + KS_2][col + KS_2] ) + W[row + KS_2][col + KS_2])
-					+ v1[KS_2].y * fc.x * W[row + KS_2][col + KS_2]);
-				if(row > -KS_2) {
-					s.z += (1 - fc.y) * (v0[KS_2].x * (fc.x * (W[row + KS_2 - 1][col + KS_2 - 1]
-						- W[row + KS_2 - 1][col + KS_2])
-						+ W[row + KS_2 - 1][col + KS_2])
-						+ v0[KS_2].y * fc.x * W[row + KS_2 - 1][col + KS_2]);
-					s.w += fc.y * (v1[KS_2].w * (fc.x * (W[row + KS_2 - 1][col + KS_2 - 1]
-						- W[row + KS_2 - 1][col + KS_2])
-						+ W[row + KS_2 - 1][col + KS_2])
-						+ v1[KS_2].z * fc.x * W[row + KS_2 - 1][col + KS_2]);
-				} // if(row > -KS_2)
-			} // else if(col == KS_2)
-			else {
-				s.x += (1 - fc.y) * (v1[(col + KS_2) / 2].w * (fc.x * (W[row + KS_2][col + KS_2 - 1]
-					- W[row + KS_2][col + KS_2 + 0] ) + W[row + KS_2][col + KS_2 + 0])
-					+ v1[(col + KS_2) / 2].z * (fc.x * (W[row + KS_2][col + KS_2 - 0]
-					- W[row + KS_2][col + KS_2 + 1]) + W[row + KS_2][col + KS_2 + 1]));
-				s.y += fc.y * (v1[(col + KS_2) / 2].x * (fc.x * (W[row + KS_2][col + KS_2-1]
-					- W[row + KS_2][col + KS_2 + 0]) + W[row + KS_2][col + KS_2 + 0])
-					+ v1[(col + KS_2) / 2].y * (fc.x * (W[row + KS_2][col + KS_2 - 0]
-					- W[row + KS_2][col + KS_2 + 1]) + W[row + KS_2][col + KS_2 + 1]));
-				if(row > -KS_2) {
-					s.z += (1 - fc.y) * (v0[(col + KS_2) / 2].x * (fc.x * (W[row + KS_2 - 1][col + KS_2 - 1]
-						- W[row + KS_2 - 1][col + KS_2 + 0]) + W[row + KS_2 - 1][col + KS_2 + 0])
-						+ v0[(col + KS_2) / 2].y * (fc.x * (W[row + KS_2 - 1][col + KS_2 - 0]
-						- W[row + KS_2 - 1][col + KS_2 + 1]) + W[row + KS_2 - 1][col + KS_2 + 1]));
-					s.w += fc.y * (v1[(col + KS_2) / 2].w * (fc.x * (W[row + KS_2 - 1][col + KS_2 - 1]
-						- W[row + KS_2 - 1][col + KS_2 + 0]) + W[row + KS_2 - 1][col + KS_2 + 0])
-						+ v1[(col + KS_2) / 2].z * (fc.x * (W[row + KS_2 - 1][col + KS_2 - 0]
-						- W[row + KS_2 - 1][col + KS_2 + 1]) + W[row + KS_2 - 1][col + KS_2 + 1]));
-				} // if(row > -KS_2)
-			} // else
-			if(row != KS_2)
-				v0[(col + KS_2) / 2] = v1[(col + KS_2) / 2].xy;
-		} // for(int col = -KS_2; col <= KS_2; col += 2)
-	} // for(int row = -KS_2; row <= KS_2; row += 2)
-
-	return dot(s, vec4(1.0f)) / w;
-}
-
-float PenumbraRadius(float depthReceiver, float depthBlocker, float widthLight) {
-    return -widthLight * (depthReceiver - depthBlocker) / depthBlocker; // "-" because of reverse z
-}
-
-float SampleShadowMapRandomDiscPCFPCSS(vec3 uvz, uint idxCascade, vec3 wsPos, float widthLight,
-	sampler2DArrayShadow ShadowMapArrayPCF, sampler2DArray ShadowMapArrayDepth, sampler3D RandomRotations) {
-	
-	const vec2 sizeFilter = SizeFilter.xx * abs(AScaleCascade[idxCascade].xy);
-	const vec2 sizeShadowMap = textureSize(ShadowMapArrayPCF, 0).xy;
-    const float depth = uvz.z + Bias;
-
-	float result;
-	if(sizeFilter.x > 1 || sizeFilter.y > 1) {
-		// Get a value to randomly rotate the kernel by
-		const ivec3 sizeRandomRotations = textureSize(RandomRotations, 0);
-		const ivec3 posSample = ivec3(wsPos * 32) % sizeRandomRotations; // multiply so shadow are less blocky (and more noisy)
-		const float radAngle = texelFetch(RandomRotations, posSample, 0).x;
-		const mat2x2 randomRotationMatrix = mat2x2(vec2(cos(radAngle), -sin(radAngle)),
-												   vec2(sin(radAngle),  cos(radAngle)));
-		const vec2 scaleSample = 0.5 * sizeFilter / sizeShadowMap;
-
-		// blocker search
-		float depthOccluderAverage = 0;
-		int numOcluderSamples = 0;
-		for (int i = 0; i < g_kSizeDisc; ++i) {
-			const vec2 offsetSample = (randomRotationMatrix * DiscSorted[i]) * scaleSample;
-			const vec2 posSample = uvz.xy + offsetSample;
-			float depthSample = texture(ShadowMapArrayDepth, vec3(posSample, idxCascade)).r;
-			if (depthSample > depth) {
-				depthOccluderAverage += depthSample;
-				++numOcluderSamples;
-			}
-		}
-
-		// early stop
-		if (numOcluderSamples == 0)
-			return 1;
-		else if (numOcluderSamples == g_kSizeDisc)
-			return 0;
-
-		// determine number of samples for PCF
-		depthOccluderAverage /= numOcluderSamples;
-		const float penumbraRadius = PenumbraRadius(depth, depthOccluderAverage, widthLight);
-		const int numSamples = int(clamp(penumbraRadius, 8, g_kSizeDisc));
-
-		// PCF
-		float sum = 0.0f;
-		for(int i = 0; i < numSamples; ++i) {
-			const vec2 offsetSample = (randomRotationMatrix * DiscSorted[i]) * scaleSample;
-			const vec2 posSample = uvz.xy + offsetSample;
-			sum += texture(ShadowMapArrayPCF, vec4(posSample, idxCascade, depth));
-        }
-		result = sum / numSamples;
-    } else {
-		result = texture(ShadowMapArrayPCF, vec4(uvz.xy, idxCascade, depth));
-	}
-	
-	return result;
-}
-//-------------------------------------------------------------------------------------------------
 // Samples the appropriate shadow map cascade
 //-------------------------------------------------------------------------------------------------
 float SampleShadowCascade(vec3 uvz, uint idxCascade, vec3 wsPos, float widthLight,
-	sampler2DArrayShadow ShadowMapArrayPCF, sampler2DArray ShadowMapArrayDepth, sampler3D RandomRotations) {
+	sampler2DArrayShadow ShadowMapArrayPCF, sampler2DArray ShadowMapArrayDepth, sampler2D Noise) {
 
     uvz += AOffsetCascade[idxCascade].xyz;
     uvz *= AScaleCascade[idxCascade].xyz;
 
-    //return SampleShadowMapFixedSizePCF(uvz, idxCascade);
+    //return SampleShadowMapFixedSizePCF(uvz, idxCascade, ShadowMapArrayPCF, Bias);
 	return SampleShadowMapRandomDiscPCFPCSS(uvz, idxCascade, wsPos, widthLight,
-		ShadowMapArrayPCF, ShadowMapArrayDepth, RandomRotations);
+		ShadowMapArrayPCF, ShadowMapArrayDepth, Noise);
 }
 //-------------------------------------------------------------------------------------------------
 // Calculates the offset to use for sampling the shadow map, based on the surface normal
@@ -223,7 +101,7 @@ vec3 GetWsShadowPosOffset(float nDotL, vec3 wsNormal, float sizeShadowMap) {
 }
 
 float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal, float widthLight,
-	sampler2DArrayShadow ShadowMapArrayPCF, sampler2DArray ShadowMapArrayDepth, sampler3D RandomRotations) {
+	sampler2DArrayShadow ShadowMapArrayPCF, sampler2DArray ShadowMapArrayDepth, sampler2D Noise) {
     
 	const vec3 projectionShadowPos = (ReferenceShadowMatrix * vec4(wsPos, 1.0f)).xyz;
 	
@@ -240,7 +118,7 @@ float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal, fl
 
     const vec3 wsPosOffset = GetWsShadowPosOffset(nDotL, wsNormal, textureSize(ShadowMapArrayPCF, 0).x);
 	const vec3 uvz = (ReferenceShadowMatrix * vec4(wsPos + wsPosOffset, 1.0f)).xyz;
-	float shadowVisibility = SampleShadowCascade(uvz, idxCascade, wsPos, widthLight, ShadowMapArrayPCF, ShadowMapArrayDepth, RandomRotations);
+	float shadowVisibility = SampleShadowCascade(uvz, idxCascade, wsPos, widthLight, ShadowMapArrayPCF, ShadowMapArrayDepth, Noise);
 	
 	// Sample the next cascade, and blend between the two results to smooth the transition
 	const float kBlendThreshold = 0.2f;
@@ -256,7 +134,7 @@ float ShadowVisibility(vec3 wsPos, float vsDepth, float nDotL, vec3 wsNormal, fl
 	fadeFactor = max(distToEdge, fadeFactor);
 	
 	if(fadeFactor <= kBlendThreshold && idxCascade != (g_kNumCascades - 1)) {
-		const float nextSplitShadowVisibility = SampleShadowCascade(uvz, idxCascade + 1, wsPos, widthLight, ShadowMapArrayPCF, ShadowMapArrayDepth, RandomRotations);
+		const float nextSplitShadowVisibility = SampleShadowCascade(uvz, idxCascade + 1, wsPos, widthLight, ShadowMapArrayPCF, ShadowMapArrayDepth, Noise);
 		const float mixAmt = smoothstep(0.0f, kBlendThreshold, fadeFactor);
 		shadowVisibility = mix(nextSplitShadowVisibility, shadowVisibility, mixAmt);
     }

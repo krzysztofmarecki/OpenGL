@@ -46,6 +46,7 @@
     <None Include="src\shaders\shading.frag" />
     <None Include="src\shaders\shadow.frag" />
     <None Include="src\shaders\exposureToneMap.frag" />
+    <None Include="src\shaders\shadowDeferred.frag" />
     <None Include="src\shaders\taa.frag" />
     <None Include="src\shaders\uv.vert" />
     <None Include="src\shaders\geometry.frag" />

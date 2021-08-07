@@ -6,6 +6,9 @@
 #include "Mesh.h"			// Mesh
 
 #include <vector>			// std::vector
+#include <filesystem>		// std::filesystem::path
+
+using Path = std::filesystem::path;
 
 class Model
 {
@@ -38,3 +41,5 @@ private:
 	std::vector<Mesh> m_opaqueMeshes;
 	std::vector<Mesh> m_transparentMeshes;
 };
+
+GLU TextureFromFile(const Path& directory, const char* pathRelativeFile, bool generateMipMap = true);

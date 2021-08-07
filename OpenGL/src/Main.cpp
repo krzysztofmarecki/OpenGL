@@ -47,8 +47,8 @@ Bool	g_showShadowMap = false;
 I32		g_cascadeIdx = 0;
 
 Vec3	g_wsPosSun(217, 265, -80);
-F32		g_sizeFilterShadow = 15;
-F32		g_widthLight = 800;
+F32		g_sizeFilterShadow = 50;
+F32		g_widthLight = 300;
 
 F32		g_wsSizeKernelAO = 3.5;
 F32		g_rateOfChangeAO = 0.2;
@@ -131,6 +131,9 @@ int main() {
 	GLU bufVelocity;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufVelocity);
 	glTextureStorage2D(bufVelocity, 1, GL_RG16F, g_kWScreen, g_kHScreen);
+	GLU bufShadowDeferred;
+	glCreateTextures(GL_TEXTURE_2D, 1, &bufShadowDeferred);
+	glTextureStorage2D(bufShadowDeferred, 1, GL_R8, g_kWScreen, g_kHScreen);
 	
 	// create and configure framebuffers
 	// ---------------------------------
@@ -157,7 +160,8 @@ int main() {
 	};
 
 	const GLU fboGeometry = CreateConfigureFrameBuffer({ bufDiffuseSpec, bufNormal, bufVelocity }, bufDepth);
-	const GLU fboDeffered = CreateConfigureFrameBuffer({ bufHdr, bufDiffuseLight });
+	const GLU fboShadowDeferred = CreateConfigureFrameBuffer({ bufShadowDeferred });
+	const GLU fboDeferred = CreateConfigureFrameBuffer({ bufHdr, bufDiffuseLight });
 	const GLU fboBack = CreateConfigureFrameBuffer({ bufLdrSrgb });
 
 	// create framebuffer for CSM
@@ -192,24 +196,6 @@ int main() {
 		return aVsFarCascade;
 	}(aVsLimitsCascade);
 	
-	// Generate random float rotation texture
-	const I32 kSizeRandomAngle = 16;
-	const std::vector<F32> aRadRandomAngles = [](const I32 size) {
-		std::random_device rd;
-		std::mt19937 gen(rd());
-		std::uniform_real_distribution<F32> dis(0, 2 * 3.14159265358979323846f);
-
-		std::vector<F32> aRadRandomAngles;
-		aRadRandomAngles.reserve(size);
-		for (I32 i = 0; i < size; i++)
-			aRadRandomAngles.push_back(dis(gen));
-		return aRadRandomAngles;
-	}(kSizeRandomAngle * kSizeRandomAngle * kSizeRandomAngle);
-	GLU bufRandomAngles;
-	glCreateTextures(GL_TEXTURE_3D, 1, &bufRandomAngles);
-	glTextureStorage3D(bufRandomAngles, 1, GL_R16F, kSizeRandomAngle, kSizeRandomAngle, kSizeRandomAngle);
-	glTextureSubImage3D(bufRandomAngles, 0, 0, 0, 0, kSizeRandomAngle, kSizeRandomAngle, kSizeRandomAngle, GL_RED, GL_FLOAT, aRadRandomAngles.data());
-
 	// SSAO
 	GLU bufSsao;
 	glCreateTextures(GL_TEXTURE_2D, 1, &bufSsao);
@@ -264,6 +250,7 @@ int main() {
 	const Shader passDirectShadowAlphaMasked("shadow.vert", "shadow.frag", "", macroDefineAlphaMasked);
 	const Shader passGeometry("geometry.vert", "geometry.frag");
 	const Shader passGeometryAlphaMasked("geometry.vert", "geometry.frag", "", macroDefineAlphaMasked);
+	const Shader passShadowDeferred("uv.vert", "shadowDeferred.frag");
 	const Shader passShading("uv.vert", "shading.frag");
 	const Shader passExposureTone("uv.vert", "exposureToneMap.frag");
 	const Shader passEyeAdaptation("eyeAdaptation.comp");
@@ -289,6 +276,12 @@ int main() {
 	glSamplerParameteri(samplerPointClamp, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glSamplerParameteri(samplerPointClamp, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glSamplerParameteri(samplerPointClamp, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	GLU samplerPointRepeat;
+	glCreateSamplers(1, &samplerPointRepeat);
+	glSamplerParameteri(samplerPointRepeat, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glSamplerParameteri(samplerPointRepeat, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glSamplerParameteri(samplerPointRepeat, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glSamplerParameteri(samplerPointRepeat, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	GLU samplerTrilinearClamp;
 	glCreateSamplers(1, &samplerTrilinearClamp);
 	glSamplerParameteri(samplerTrilinearClamp, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -301,13 +294,15 @@ int main() {
 	glSamplerParameteri(samplerLinearClamp, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glSamplerParameteri(samplerLinearClamp, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glSamplerParameteri(samplerLinearClamp, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
+	
+	const GLU bufBlueNoise = TextureFromFile("models/", "blue_noise_64.tga", false);
 
 	const Model sceneSponza("sponza/sponza.dae");
 	Mat4 modelViewProjPrevSponza = glm::identity<Mat4>();
 	F64 frameTimePrev = 0;
 	U64 frameCount = -1;
 
+	
 	// render loop
 	// -----------
 	while (!glfwWindowShouldClose(window)) {
@@ -428,6 +423,10 @@ int main() {
 
 			modelViewProjPrevSponza = projection * view * modelSponza;
 		}
+		auto GetRadRodationTemporal = [](const U64 frameCount) {
+			const F32 aRotation[] = { 60, 300, 180, 240, 120, 0 };
+			return aRotation[frameCount % 6] / 360 * 2 * 3.14159265358979323846f;
+		};
 		// ssao
 		// ----
 		{
@@ -449,11 +448,6 @@ int main() {
 				glNamedFramebufferTexture(fboSsao, GL_COLOR_ATTACHMENT0, bufSsao, 0);
 				glBindTextureUnit(0, bufDepthHalfResCurr);
 				glBindSampler(0, samplerPointClamp);
-
-				auto GetRadRodationTemporal = [](const U64 frameCount) {
-					const F32 aRotation[] = { 60, 300, 180, 240, 120, 0 };
-					return aRotation[frameCount % 6] / 360 * 2 * 3.14159265358979323846f;
-				};
 
 				passSsao.Use();
 				passSsao.SetMat4("InvProj", glm::inverse(projection));
@@ -496,40 +490,65 @@ int main() {
 			std::swap(bufDepthHalfResCurr, bufDepthHalfResPrev);
 			std::swap(bufSsaoAccCurr, bufSsaoAccPrev);
 		}
-		// deffered pass
-		// -------------
+		// deffered shadows
+		// ----------------
 		{
-			glBindFramebuffer(GL_FRAMEBUFFER, fboDeffered);
+			glBindFramebuffer(GL_FRAMEBUFFER, fboShadowDeferred);
+			passShadowDeferred.Use();
+			
+			passShadowDeferred.SetVec3("WsDirLight", -wsDirLight);	// notice "-"
+			passShadowDeferred.SetFloatArr("AVsFarCascade", aVsFarCascade.data(), g_kNumCascades);
+			passShadowDeferred.SetMat4("ReferenceShadowMatrix", referenceMatrix);
+			passShadowDeferred.SetVec3Arr("AScaleCascade", aScaleCascade.data(), aScaleCascade.size());
+			passShadowDeferred.SetVec3Arr("AOffsetCascade", aOffsetCascade.data(), aOffsetCascade.size());
+			passShadowDeferred.SetFloat("WidthLight", g_widthLight);
+
+			passShadowDeferred.SetFloat("Bias", g_bias);
+			passShadowDeferred.SetFloat("ScaleNormalOffsetBias", g_scaleNormalOffsetBias);
+			passShadowDeferred.SetFloat("SizeFilter", g_sizeFilterShadow);
+			passShadowDeferred.SetMat4("InvViewProj", glm::inverse(projection* view));
+			passShadowDeferred.SetFloat("Near", nearPlane);
+			passShadowDeferred.SetFloat("RadRotationTemporal", GetRadRodationTemporal(frameCount));
+
+			glBindTextureUnit(0, bufNormal);
+			glBindTextureUnit(1, bufDepth);
+			glBindTextureUnit(2, bufDepthShadow);
+			glBindTextureUnit(3, bufDepthShadow);
+			glBindTextureUnit(4, bufBlueNoise);
+
+			glBindSampler(0, samplerPointClamp);
+			glBindSampler(1, samplerPointClamp);
+			glBindSampler(2, samplerShadowPCF);
+			glBindSampler(3, samplerShadowDepth);
+			glBindSampler(4, samplerPointRepeat);
+
+			glDisable(GL_DEPTH_TEST); // also disables depth writes
+			RenderQuad();
+			glEnable(GL_DEPTH_TEST);
+		}
+		// deffered shading
+		// ----------------
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, fboDeferred);
 			passShading.Use();
 			passShading.SetVec3("WsPosCamera", g_camera.GetWsPosition());
 
 			passShading.SetVec3("WsDirLight", -wsDirLight);	// notice "-"
 			passShading.SetVec3("ColorDirLight", Vec3(3));
-			passShading.SetFloatArr("AVsFarCascade", aVsFarCascade.data(), g_kNumCascades);
-			passShading.SetMat4("ReferenceShadowMatrix", referenceMatrix);
-			passShading.SetVec3Arr("AScaleCascade", aScaleCascade.data(), aScaleCascade.size());
-			passShading.SetVec3Arr("AOffsetCascade", aOffsetCascade.data(), aOffsetCascade.size());
-			passShading.SetFloat("WidthLight", g_widthLight);
-
-			passShading.SetFloat("Bias", g_bias);
-			passShading.SetFloat("ScaleNormalOffsetBias", g_scaleNormalOffsetBias);
-			passShading.SetFloat("SizeFilter", g_sizeFilterShadow);
+			
 			passShading.SetMat4("InvViewProj", glm::inverse(projection* view));
 			passShading.SetFloat("Near", nearPlane);
 			passShading.SetBool("EnableAO", g_enableAO);
 			glBindTextureUnit(0, bufDiffuseSpec);
 			glBindTextureUnit(1, bufNormal);
 			glBindTextureUnit(2, bufDepth);
-			glBindTextureUnit(3, bufDepthShadow);
-			glBindTextureUnit(4, bufDepthShadow);
-			glBindTextureUnit(5, bufRandomAngles); // lack of sampler is intentional
-			glBindTextureUnit(6, bufSsaoAccPrev); // swap above
+			glBindTextureUnit(3, bufShadowDeferred);
+			glBindTextureUnit(4, bufSsaoAccPrev); // swap above
 			glBindSampler(0, samplerPointClamp);
 			glBindSampler(1, samplerPointClamp);
 			glBindSampler(2, samplerPointClamp);
-			glBindSampler(3, samplerShadowPCF);
-			glBindSampler(4, samplerShadowDepth);
-			glBindSampler(6, samplerPointClamp);
+			glBindSampler(3, samplerLinearClamp);
+			glBindSampler(4, samplerPointClamp);
 			
 			glDisable(GL_DEPTH_TEST); // also disables depth writes
 			RenderQuad();

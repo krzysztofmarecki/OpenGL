@@ -2,23 +2,19 @@
 
 Various graphic effects implemented in OpenGL.
 
-![](https://i.ibb.co/5n2MpyX/Bez-tytu-u.png)
+![](https://i.ibb.co/6br1K5x/Bez-tytu-u.png)
 
 #### Shadow mapping
-- PCF (2 modes)
-  - Disc sampling
-    - 16x16x16 3D texture of random rotations tiled in world space
-    - Vogel disc
-      - Produses smoother penumbra than Poisson disc
-      - Tiling is less visible than with Poisson disc
-      - Poisson disc as fallback option is available in shader
-  - Optimized fixed texel size PCF kernel using GatherCmp &#42;
-- PCSS (only for Disc sampling) &#42;&#42;
-  - Disc taps are presorted by distance from the kernel center
-  - Use this kernel to estimate the average distance ratio
-  - The amount of samples is reduced proportionally to the average distance ratio
-    - This affects the radius of kernel, since the taps are sorted
-  - Use only the reduced amount of samples for final shadow computation
+- High performance & quality PCSS
+  - 10 + 10 taps
+  - vogel disk
+    - slightly better than poisson
+  - blue noise
+  - temporal disk rotaions
+    - (almost) completely hides moving noise on camera movement
+    - same rotations as for GTAO (it just works)
+  - bilateral pixel wide blur
+
 - Cascade shadow mapping
   - stable &#42;
   - projection base cascade selection &#42;
@@ -26,9 +22,7 @@ Various graphic effects implemented in OpenGL.
   - partitioning using mix between logarithmic and linear
   - hardcoded near and far (no bounding boxes)
 
-&#42; A Sampling of Shadow Techniques https://therealmjp.github.io/posts/shadow-maps/  
-&#42;&#42; Playing with Real-Time Shadows https://www.realtimeshadows.com/sites/default/files/Playing%20with%20Real-Time%20Shadows_0.pdf
-
+&#42; A Sampling of Shadow Techniques https://therealmjp.github.io/posts/shadow-maps/
 #### GTAO
 - Temporal supersampling
 - Half resolution

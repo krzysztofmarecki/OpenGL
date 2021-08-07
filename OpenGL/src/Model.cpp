@@ -9,14 +9,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_WINDOWS_UTF8		// WideCharToMultiByte
 #include <stb_image.h>			// stbi_load(), stbi_convert_wchar_to_utf8()
-
 #include <unordered_map>		// std::unordered_map
-#include <filesystem>			// std::filesystem::path
 #include <iostream>				// std::cout
 
 using Path = std::filesystem::path;
-
-GLU TextureFromFile(const Path& directory, const char* pathRelativeFile);
 
 struct OpaqueMaterial {
 	GLU m_diffuse = 0;
@@ -156,7 +152,7 @@ Model::Model(std::string pathModel) {
 	}
 }
 
-GLU TextureFromFile(const Path& directory, const char* pathRelativeFile) {
+GLU TextureFromFile(const Path& directory, const char* pathRelativeFile, bool generateMipMap) {
 	Path path(directory);
 	path.concat(pathRelativeFile);
 	char buffer[1024];
@@ -183,9 +179,13 @@ GLU TextureFromFile(const Path& directory, const char* pathRelativeFile) {
 
 		GLU textureID;
 		glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
-		glTextureStorage2D(textureID, log2f(std::max(width, height))+1, internalFormat, width, height);
+		GLS levels = 1;
+		if (generateMipMap)
+			levels = log2f(std::max(width, height)) + 1;
+		glTextureStorage2D(textureID, levels, internalFormat, width, height);
 		glTextureSubImage2D(textureID, 0, 0, 0, width, height, format, GL_UNSIGNED_BYTE, data);
-		glGenerateTextureMipmap(textureID);
+		if (generateMipMap)
+			glGenerateTextureMipmap(textureID);
 
 		stbi_image_free(data);
 		return textureID;

@@ -1,7 +1,4 @@
 #version 430 core
-#include "lightning.gl"
-#include "normals.gl"
-#include "depth.gl"
 
 out vec3 Color;
 out float DiffuseLight;
@@ -10,10 +7,16 @@ in vec2 UV;
 layout (binding = 0) uniform sampler2D DiffuseSpec;
 layout (binding = 1) uniform sampler2D Normal;
 layout (binding = 2) uniform sampler2D Depth;
-layout (binding = 3) uniform sampler2DArrayShadow ShadowMapArrayPCF;
-layout (binding = 4) uniform sampler2DArray ShadowMapArrayDepth;
-layout (binding = 5) uniform sampler3D RandomRotations;
-layout (binding = 6) uniform sampler2D GTAO;
+layout (binding = 3) uniform sampler2D ShadowDeffered;
+layout (binding = 4) uniform sampler2D GTAO;
+
+
+
+#include "lightning.gl"
+#include "normals.gl"
+#include "depth.gl"
+
+
 
 // position from depth
 uniform mat4 InvViewProj;
@@ -37,13 +40,30 @@ void main() {
 	const float csDepth = texelFetch(Depth, ivec2(gl_FragCoord.xy), 0).r;
 	const vec3 wsPos = WsPosFromCsDepth(csDepth, UV, InvViewProj);
 	const vec3 wsNormal = texelFetch(Normal, ivec2(gl_FragCoord.xy), 0).xyz * 2 - 1;
-	const float vsDepth = VsDepthFromCsDepth(csDepth, Near);
+
+	vec4 shadow4 = textureGather(ShadowDeffered, UV);
+	vec4 depth4  = textureGather(Depth, UV);
+	for (int i = 0; i < 4; i++)
+		depth4[i] = VsDepthFromCsDepth(depth4[i], Near);
 	
+	const float vsDepth = depth4[3];
+
+	float shadowAcc = shadow4[3];
+	float weightAcc = 1;
+	for (int i = 0; i < 3; i++) {
+		float weight = clamp(1.0 - abs(depth4[i] - vsDepth), 0.0, 1.0);
+		shadowAcc += shadow4[i] * weight;
+		weightAcc += weight;
+	}
+	shadowAcc /= weightAcc;
+
+
 	vec3 color = vec3(0);
 	vec3 colorPureDiffuse = vec3(0);
+
 	// dir light
 	Foo tempSun = DirrLight(wsNormal, wsPos, vsDepth, ColorDirLight, WsDirLight, colorDiffuse, WidthLight, colorSpecular,
-		ShadowMapArrayPCF, ShadowMapArrayDepth, RandomRotations);
+		shadowAcc);
 	color += tempSun.color;
 	colorPureDiffuse += tempSun.colorPureDiffuse;
 

@@ -40,13 +40,12 @@ Foo PointLight(vec3 wsNormal, vec3 wsPos, vec3 wsPosLight, vec3 colorLight, vec3
 }
 
 Foo DirrLight(vec3 wsNormal, vec3 wsPos, float vdDepth, vec3 colorLight, vec3 wsDirLight, vec3 diffColor, float widthLight, float colorSPecular,
-	sampler2DArrayShadow ShadowMapArrayPCF, sampler2DArray ShadowMapArrayDepth, sampler3D RandomRotations) {
+	float shadow) {
 
 	const float nDotL = max(dot(wsNormal, wsDirLight), 0);
 	const vec3 colorPureDiffuse = nDotL * colorLight;
 	const vec3 diffuse = colorPureDiffuse * diffColor;
 	const vec3 specular = Spec(wsNormal, wsPos, colorLight, wsDirLight) * colorSPecular;
 	
-	const float lightning = ShadowVisibility(wsPos, vdDepth, nDotL, wsNormal, widthLight, ShadowMapArrayPCF, ShadowMapArrayDepth, RandomRotations);
-	return Foo(lightning * colorPureDiffuse, lightning * (diffuse + specular));
+	return Foo(shadow * colorPureDiffuse, shadow * (diffuse + specular));
 }
